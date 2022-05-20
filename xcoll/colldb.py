@@ -2,6 +2,222 @@ import numpy as np
 import pandas as pd
 import io
 
+
+# tracker.global_xy_limit
+
+
+# Stub class, to allow to set collimator settings without having an installed collimator
+class Uninstalled:
+    def __init__(self):
+        active_length = 0
+        inactive_front = 0
+        inactive_back = 0
+        angle = 0
+        jaw_F_L = 1
+        jaw_F_R = -1
+        jaw_B_L = 1
+        jaw_B_R = -1
+        onesided = 0
+        dx = 0
+        dy = 0
+        dpx = 0
+        dpy = 0
+        offset = 0
+        tilt_L = 0
+        tilt_R = 0
+        is_active = 0
+        material = None
+        
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# When installing a setting in line: copy settings from Uninstalled !!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+# Angles follow standard right-hand-rule sign convention: looking along rotation axis, clockwise is positive
+class CollimatorData:
+    def __init__(self, element=None, align_to='front'):
+        self._parking = None
+        self._angle = None
+        self._element = Uninstalled() if element is None else element   # link to installed collimator
+        self.align_to = align_to
+
+    @property
+    def collimator_type(self):
+        return self._element.__class__
+
+    @property
+    def parking(self):
+        return self._parking
+
+    # Basic collimator element definitions
+    # ==================================================
+    @property
+    def jaw_F_L(self):
+        return self._element.jaw_F_L
+
+    @property
+    def jaw_F_R(self):
+        return self._element.jaw_F_R
+
+    @property
+    def jaw_B_L(self):
+        return self._element.jaw_B_L
+
+    @property
+    def jaw_B_R(self):
+        return self._element.jaw_B_R
+    
+    # angle between x and y (positive goes from x to y)
+    @property
+    def angle(self):
+        return self._element.angle
+
+    
+    
+    # Positions
+    # ==================================================
+    # Maybe it is enough to defin s_start at installation
+    # but this depends on how we will implement tilts: we need to define where to place the rotation axis...
+    # At s_front and x=jaw? At s_center and x=jaw? At s_center and x=center?
+    @property
+    def s_start(self):       # start of element; defined during installation of collimator
+        return self._s_start
+
+    @property
+    def s_center(self):      # center of active_length; defined during installation of collimator
+        return self._s_center
+
+    @property
+    def s_end(self):         # end of element
+        return self._s_start + self._element.inactive_front + self._element.active_length + self._element.inactive_back
+
+    @property
+    def s_front(self):       # start of collimator
+        return self._s_start + self._element.inactive_front
+
+    @property
+    def s_back(self):        # end of collimator
+        return self._s_start + self._element.inactive_front + self._element.active_length
+    
+
+    
+    
+    
+    # angle between x and s (positive goes from s to x)
+    @property
+    def tilt_L(self):
+        return self._element.tilt_L
+
+    @property
+    def tilt_R(self):
+        return self._element.tilt_R
+    
+    @property
+    def gap_F(self)
+    
+    
+    
+    
+    
+    
+    
+    
+        @property
+    def align_to(self):
+        return self._align_to
+
+    # Options are: 'front', 'center', 'back', 'angular'   TODO: 'maximum'
+    @align_to.setter
+    def align_to(self, align):
+        if align == 'maximum':
+            raise NotImplementedError
+        self._align_to = align
+        s_front = self.s_center - self.active_length/2
+        s_center = self.s_center
+        s_back = self.s_center + self.active_length/2
+        if align == 'front':
+            self._s_align_front = self.s_front
+            self._s_align_back  = self.s_front
+        elif align == 'center':
+            self._s_align_front = self.s_center
+            self._s_align_back  = self.s_center
+        elif align == 'back':
+            self._s_align_front = self.s_back
+            self._s_align_back  = self.s_back
+        elif align == 'angular':
+            self._s_align_front = self.s_front
+            self._s_align_back  = self.s_back
+        else:
+            raise NotImplementedError
+        new_optics_positions = np.unique(self._s_align_front, self._s_align_back)
+        self._optics_positions_to_calculate = set(new_optics_positions) - set(self._optics.index)
+        self._compute_jaws()
+    
+    
+    
+    
+    
+    
+    
+        fields = {'s_center':None, 'align_to': None, 's_align_front': None, 's_align_back': None }
+        fields.update({'gap_L': None, 'gap_R': None, 'angle': 0, 'offset': 0, 'tilt_L': 0, 'tilt_R': 0, 'parking': None})
+        fields.update({'jaw_F_L': None, 'jaw_F_R': None, 'jaw_B_L': None, 'jaw_B_R': None})
+        fields.update({'onesided': 'both', 'material': None, 'stage': None, 'collimator_type': None, 'is_active': True})
+        fields.update({'active_length': 0, 'inactive_front': 0, 'inactive_back': 0, 'sigmax': None, 'sigmay': None})
+        fields.update({'crystal': None, 'bend': None, 'xdim': 0, 'ydim': 0, 'miscut': 0, 'thick': 0})
+
+        
+        @property
+    def _beam_size_front(self):
+        df = self._colldb
+        opt = self._optics
+        betx = opt.loc[df.s_align_front,'betx'].astype(float)
+        bety = opt.loc[df.s_align_front,'bety'].astype(float)
+        sigmax = np.sqrt(betx*self._emitx/self._beta_gamma_rel)
+        sigmay = np.sqrt(bety*self._emity/self._beta_gamma_rel)
+        result = np.sqrt(
+                    (sigmax*np.cos(np.float_(df.angle.values)*np.pi/180))**2
+                    + (sigmay*np.sin(np.float_(df.angle.values)*np.pi/180))**2
+                )
+        result.index = self._colldb.index
+        return result
+
+    @property
+    def _beam_size_back(self):
+        df = self._colldb
+        opt = self._optics
+        betx = opt.loc[df.s_align_back,'betx'].astype(float)
+        bety = opt.loc[df.s_align_back,'bety'].astype(float)
+        sigmax = np.sqrt(betx*self._emitx/self._beta_gamma_rel)
+        sigmay = np.sqrt(bety*self._emity/self._beta_gamma_rel)
+        result = np.sqrt(
+                    (sigmax*np.cos(np.float_(df.angle.values)*np.pi/180))**2
+                    + (sigmay*np.sin(np.float_(df.angle.values)*np.pi/180))**2
+                )
+        result.index = self._colldb.index
+        return result
+
+    # parking is defined with respect to closed orbit
+    # TODO: tilt
+    # 'upstr'  =>  'front'  en   'downstr'  =>  'back'
+    def _compute_jaws(self):
+        if self._optics_is_ready:
+            df = self._colldb
+            beam_size_front = self._beam_size_front
+            beam_size_back  = self._beam_size_back
+            jaw_F_L = df['gap_L']*beam_size_front + self.offset
+            jaw_F_R = df['gap_R']*beam_size_front - self.offset
+            jaw_B_L = df['gap_L']*beam_size_back  + self.offset
+            jaw_B_R = df['gap_R']*beam_size_back  - self.offset
+            df['jaw_F_L'] = df['parking'] if df['gap_L'] is None else np.minimum(jaw_F_L,df['parking'])
+            df['jaw_F_R'] = -df['parking'] if df['gap_R'] is None else -np.minimum(jaw_F_R,df['parking'])
+            df['jaw_B_L'] = df['parking'] if df['gap_L'] is None else np.minimum(jaw_B_L,df['parking'])
+            df['jaw_B_R'] = -df['parking'] if df['gap_R'] is None else -np.minimum(jaw_B_R,df['parking'])
+        
+        
+        
+        
+        
+
 def load_SixTrack_colldb(filename, *, emit):
     return CollDB(emit=emit, sixtrack_file=filename)
 
