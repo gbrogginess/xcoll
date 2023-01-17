@@ -12,10 +12,9 @@ class K2Engine:
         else:
             self.random_generator_seed = random_generator_seed
 
-        import pyk2
-        pyk2.pyk2_init(n_alloc=n_alloc, colldb_input_fname=colldb_filename,
+        from .pyk2 import pyk2_init
+        pyk2_init(n_alloc=n_alloc, colldb_input_fname=colldb_filename,
                random_generator_seed=self.random_generator_seed)
-        pyk2._active_engine = self
         
         
 # call collmat_init                   ! Set default values for collimator materials
@@ -69,9 +68,7 @@ class K2Collimator:
 
     def track(self, particles):
 
-        import pyk2
-        if pyk2._active_engine is not self.k2engine:
-            raise ValueError(f"Collimator has different K2Engine than the main initiated one!")
+        from .pyk2 import pyk2_run
         npart = particles._num_active_particles
         if npart > self.k2engine.n_alloc:
             raise ValueError(f"Tracking {npart} particles but only {self.k2engine.n_alloc} allocated!")
@@ -111,7 +108,7 @@ class K2Collimator:
         # `linside` is an array of logicals in fortran. Beware of the fortran converion:
         # True <=> -1 (https://stackoverflow.com/questions/39454349/numerical-equivalent-of-true-is-1)
 
-        pyk2.pyk2_run(x_particles=x_part,
+        pyk2_run(x_particles=x_part,
                       xp_particles=xp_part,
                       y_particles=y_part,
                       yp_particles=yp_part,

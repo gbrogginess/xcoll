@@ -42,5 +42,3 @@ class BlackAbsorber(xt.BeamElement):
     def length(self):
         return (self.inactive_front + self.active_length + self.inactive_back)
 
-BlackAbsorber.XoStruct.extra_sources = [
-        _pkg_root.joinpath('beam_elements/collimators_src/absorber.h')]

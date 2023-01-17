@@ -3,8 +3,8 @@ import pandas as pd
 import io
 
 
-def load_SixTrack_colldb(filename, *, emitx, emity):
-    return CollDB(emitx=emitx, emity=emity, sixtrack_file=filename)
+def load_SixTrack_colldb(filename, *, emit):
+    return CollDB(emitx=emit, emity=emit, sixtrack_file=filename)
     
 class CollDB:
     def __init__(self, *, emitx, emity, sixtrack_file=None):
