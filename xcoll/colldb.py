@@ -15,6 +15,7 @@ class CollDB:
             self.load_SixTrack(sixtrack_file)
         else:
             self._colldb = None
+        self.sixtrack_file = sixtrack_file
 
     def show(self):
         return pd.DataFrame({

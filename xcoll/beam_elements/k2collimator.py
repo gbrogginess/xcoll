@@ -73,6 +73,9 @@ class K2Collimator:
         if npart > self.k2engine.n_alloc:
             raise ValueError(f"Tracking {npart} particles but only {self.k2engine.n_alloc} allocated!")
 
+        if npart < 1:
+            return
+
         # Drift inactive front
         L = self.inactive_front
         if L > 0:

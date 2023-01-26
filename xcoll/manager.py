@@ -62,13 +62,13 @@ class CollimatorManager:
     def install_k2_collimators(self, names=None, *, max_part=50000, seed=None, verbose=False):        
         # Check for the existence of a K2Engine; warn if settings are different
         # (only one instance of K2Engine should exist).
-        colldb_filename="/afs/cern.ch/work/d/dedemetr/private/lhc_run3_b1.dat"
+        colldb_filename=self.colldb.sixtrack_file
         if self._k2engine is None:
             self._k2engine = K2Engine(n_alloc=max_part, colldb_filename=colldb_filename, random_generator_seed=seed)
         
         # Enumerate the collimators as expected by K2
         icolls = { name: icoll for icoll, name in enumerate(self.collimator_names, start=1) }
-        
+
         # Do the installation
         def install_func(thiscoll, name):
             return K2Collimator(
