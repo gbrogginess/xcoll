@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+import xtrack as xt
+import xobjects as xo
+import xpart as xp
 
 from .beam_elements import BlackAbsorber, K2Collimator, K2Engine
 from .colldb import CollDB
@@ -7,10 +10,14 @@ from .colldb import CollDB
 _all_collimator_types = { BlackAbsorber, K2Collimator }
 
 class CollimatorManager:
-    def __init__(self, *, line, colldb: CollDB):        
+    def __init__(self, *, line, colldb: CollDB, line_is_reversed=False):        
         self.colldb = colldb
         self.line = line
         self._k2engine = None   # only needed for FORTRAN K2Collimator
+        self.tracker = None
+        self._losmap = None
+        self._coll_summary = None
+        self._line_is_reversed = line_is_reversed
 
     @property
     def collimator_names(self):
@@ -36,6 +43,9 @@ class CollimatorManager:
     def s_end(self):
         return self.colldb.s_center + self.colldb.active_length/2 + self.colldb.inactive_back
 
+    @property
+    def s_match(self):
+        return self.colldb.s_match
 
     def install_black_absorbers(self, names=None, *, verbose=False):
         def install_func(thiscoll, name):
@@ -213,6 +223,83 @@ class CollimatorManager:
         self.tracker = self.line.build_tracker(**kwargs)
         return self.tracker
 
+    def generate_pencil_on_collimator(self, collimator, num_particles, *, side='+-', impact_parameter=1e-6, pencil_spread=1e-9,
+                                     transverse_impact_parameter=0., transverse_spread_sigma=0.01, sigma_z=7.55e-2):
+        if transverse_impact_parameter != 0.:
+            raise NotImplementedError
+
+        if side == '+-':
+            num_plus = int(num_particles/2)
+            num_min  = int(num_particles - num_plus)
+            part_plus = self.generate_pencil_on_collimator(collimator, num_plus, side='+',
+                            impact_parameter=impact_parameter, pencil_spread=pencil_spread,
+                            transverse_impact_parameter=transverse_impact_parameter,
+                            transverse_spread_sigma=transverse_spread_sigma, sigma_z=sigma_z)
+            part_min = self.generate_pencil_on_collimator(collimator, num_min, side='-',
+                            impact_parameter=impact_parameter, pencil_spread=pencil_spread,
+                            transverse_impact_parameter=transverse_impact_parameter,
+                            transverse_spread_sigma=transverse_spread_sigma, sigma_z=sigma_z)
+            part = xp.Particles.merge([part_plus, part_min])
+            part.start_tracking_at_element = part_plus.start_tracking_at_element
+            return part
+        nemitt_x   = self.colldb._emitx
+        nemitt_y   = self.colldb._emity
+        tracker    = self.tracker
+        line       = self.line
+        match_at_s = self.s_start[collimator]
+        angle      = self.colldb.angle[collimator]
+        sigma      = self.colldb.beam_size[collimator]
+        dr_sigmas  = pencil_spread/sigma
+
+        if abs(np.mod(angle-90,180)-90) < 1e-6:
+            plane = 'x'
+            co_pencil     = line[collimator].dx
+    #         co_transverse = line[collimator].dy
+        elif abs(np.mod(angle,180)-90) < 1e-6:
+            plane = 'y'
+            co_pencil     = line[collimator].dy
+    #         co_transverse = line[collimator].dx
+        else:
+            raise NotImplementedError("Pencil beam on a skew collimator not yet supported!")
+
+        if side == '+':
+            absolute_cut = line[collimator].jaw + co_pencil + impact_parameter
+        elif side == '-':
+            absolute_cut = -line[collimator].jaw + co_pencil - impact_parameter
+
+        # Collimator plane: generate pencil distribution
+        pencil, p_pencil = xp.generate_2D_pencil_with_absolute_cut(num_particles,
+                        plane=plane, absolute_cut=absolute_cut, dr_sigmas=dr_sigmas,
+                        side=side, tracker=tracker,
+                        nemitt_x=nemitt_x, nemitt_y=nemitt_y,
+                        at_element=collimator, match_at_s=match_at_s
+        )
+
+        # Other plane: generate gaussian distribution in normalized coordinates
+        transverse_norm   = np.random.normal(scale=transverse_spread_sigma, size=num_particles)
+        p_transverse_norm = np.random.normal(scale=transverse_spread_sigma, size=num_particles)
+
+        # Longitudinal plane
+        zeta, delta = xp.generate_longitudinal_coordinates(
+                num_particles=num_particles, distribution='gaussian', sigma_z=sigma_z, tracker=tracker
+        )
+
+        if plane == 'x':
+            part = xp.build_particles(
+                    x=pencil, px=p_pencil, y_norm=transverse_norm, py_norm=p_transverse_norm,
+                    zeta=zeta, delta=delta, nemitt_x=nemitt_x, nemitt_y=nemitt_y,
+                    tracker=tracker, at_element=collimator, match_at_s=match_at_s
+            )
+        else:
+            part = xp.build_particles(
+                    x_norm=transverse_norm, px_norm=p_transverse_norm, y=pencil, py=p_pencil, 
+                    zeta=zeta, delta=delta, nemitt_x=nemitt_x, nemitt_y=nemitt_y,
+                    tracker=tracker, at_element=collimator, match_at_s=match_at_s
+            )
+
+        part._init_random_number_generator()
+
+        return part
 
     def track(self, *args, **kwargs):
         self.tracker.track(*args, **kwargs)
@@ -302,3 +389,4 @@ class CollimatorManager:
             aper_s = [ machine_length - s for s in aper_s ]
 
         return aper_s, aper_names
+
