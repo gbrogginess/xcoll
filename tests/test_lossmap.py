@@ -8,12 +8,12 @@ import numpy as np
 from pathlib import Path
 import xtrack as xt
 import xcoll as xc
+import xpart as xp
 import pytest
 from xpart.test_helpers import flaky_assertions, retry
 from xobjects.test_helpers import for_all_test_contexts
 
 path = Path(__file__).parent / 'data'
-
 
 @for_all_test_contexts(
     excluding=('ContextCupy', 'ContextPyopencl')  # Rutherford RNG not on GPU
@@ -46,6 +46,39 @@ def test_run_lossmap(beam, plane, npart, interpolation, ignore_crystals, test_co
     line.track(part, num_turns=2)
     line.scattering.disable()
     assert_lossmap(beam, npart, line, part, tcp, interpolation, ignore_crystals, 'EverestCollimator', 'EverestCrystal')
+
+
+@retry()
+def test_run_lossmap_geant4():
+    # If a previous test failed, stop the server manually
+    if xc.Geant4Engine.is_running():
+        xc.Geant4Engine.stop()
+
+    npart = 5000
+    beam = 2
+    plane = 'H'
+
+    line = xt.Line.from_json(path / f'sequence_lhc_run3_b{beam}.json')
+    colldb = xc.CollimatorDatabase.from_yaml(path / f'colldb_lhc_run3_ir7.yaml', beam=beam)
+    bdsim_config_file = 'data_test_geant4/settings_protons.gmad'
+    colldb.install_geant4_collimators(line=line)
+    df_with_coll = line.check_aperture()
+    assert not np.any(df_with_coll.has_aperture_problem)
+    line.build_tracker()
+    line.collimators.assign_optics()
+
+    xc.Geant4Engine.start(line=line, bdsim_config_file=bdsim_config_file)
+    particle_ref = xp.Particles.reference_from_pdg_id(pdg_id='proton', p0c=6.8e12)
+    xc.Geant4Engine.set_particle_ref(particle_ref=particle_ref, line=line, seed=1993)
+
+    tcp  = f"tcp.{'c' if plane=='H' else 'd'}6{'l' if beam==1 else 'r'}7.b{beam}"
+    part = line[tcp].generate_pencil(npart, _capacity=2*npart)
+
+    line.scattering.enable()
+    line.track(part, num_turns=2)
+    line.scattering.disable()
+    xc.Geant4Engine.stop()
+    assert_lossmap(beam, npart, line, part, tcp, 0.1, True, 'Geant4Collimator', None)
 
 
 def assert_lossmap(beam, npart, line, part, tcp, interpolation, ignore_crystals, coll_cls, cry_cls):
