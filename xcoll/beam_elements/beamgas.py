@@ -7,9 +7,12 @@ import xobjects as xo
 import xtrack as xt
 import numpy as np
 
-class BeamGas(xt.BeamElement):
+class BeamGasScattering(xt.BeamElement):
 
     _xofields = {
         '_p0c': xo.Float64,
         # others to be passed to the C-kernel
     }
+
+    def _configure(self):
+        pass

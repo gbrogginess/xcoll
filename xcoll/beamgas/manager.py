@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import periodictable as pt
 
@@ -25,8 +26,8 @@ class BeamGasManager():
         if process not in ['brems', 'coulomb']:
             raise ValueError(f'process must be either "brems" (bremsstrahlung) or "Coulomb" (Coulomb scattering). Got {process} instead.')
         
-        brems = True if process == 'brems' else False
-        coulomb = True if process == 'coulomb' else False
+        self.brems = True if process == 'brems' else False
+        self.coulomb = True if process == 'coulomb' else False
 
         # Check that interaction_length_is_nturns is an integere if not None
         if interaction_length_is_nturns is not None:
@@ -46,8 +47,50 @@ class BeamGasManager():
         # Will move brems and coulomb calclulator to C-kernel
         # self.brems = None 
         # self.coulomb = None
-    
+
+    def initialise_beamgas(self):
+        line = self.line
+        tab = line.get_table()
+
+        density_df = self.density_df
+
+        # Helper to config all fields to a single BeamGas
+        def _config(nn):
+            try:
+                s = tab.rows[nn].s[0]
+            except Exception:
+                s = self.line.get_s_position(nn)
+
+            atomic_densities = {}
+            for aa in density_df.columns[1:]:
+                n_at = np.interp(s, density_df['s'], density_df[aa])
+                atomic_densities[aa] = n_at
+
+            if self.brems:
+                # Local gas parameters (bremsstrahlung)
+
+            if self.coulomb:
+                # Local gas parameters (Coulomb)
+
+            elem = line[nn] # xc.BeamGasScattering
+            element_index = line.element_names.index(nn)
+
+            elem._configure(
+                brems=self.brems,
+                coulomb=self.coulomb,
+                atomic_densities=atomic_densities,
+            )
+
+            # BeamGas calculator as xo.HybridClass ??
+
+            # dxsec
+            
+
+        
+
+
     def initialise_particles(self, particles):
         active_part_ids = particles.particle_id[particles.state > 0]
         n_active = len(active_part_ids)
         particles.weight[:n_active] = self.rng.random(n_active)
+        self._particles_initialised = True
