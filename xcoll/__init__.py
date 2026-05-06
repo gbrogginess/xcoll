@@ -18,6 +18,8 @@ from .interaction_record import InteractionRecord
 from .rf_sweep import RFSweep, prepare_rf_sweep
 from .lossmap import LossMap, MultiLossMap
 from .particles_tree import ParticlesTree
+from .beamgas.manager import BeamGasManager
+from .beam_elements.beamgas import BeamGasScattering
 
 from .constants import particle_states, particle_state_names, interactions, interaction_names
 
