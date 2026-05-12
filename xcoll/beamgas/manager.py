@@ -487,6 +487,9 @@ class BeamGasManager():
                 circumference = line.get_length()
                 biasing_factor = avg_mfp_tot / (self.interaction_length_is_nturns * circumference)
 
+                # Store biasing factor as BeamGasManager attribute
+                self.biasing_factor = biasing_factor
+
                 for kk in self.atomic_species:
                     self.brems_xsec[kk] *= biasing_factor
                 print(f'\nBremsstrahlung cross section biased by a factor {int(biasing_factor)}\n')
@@ -510,6 +513,9 @@ class BeamGasManager():
 
                 circumference = line.get_length()
                 biasing_factor = avg_mfp_tot / (self.interaction_length_is_nturns * circumference)
+
+                # Store biasing factor as BeamGasManager attribute
+                self.biasing_factor = biasing_factor
 
                 for kk in self.atomic_species:
                     self.coulomb_xsec[kk] *= biasing_factor
