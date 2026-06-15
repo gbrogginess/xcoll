@@ -147,14 +147,24 @@ gas_density = xt.Table(
 beamgas_manager = xc.BeamGasManager(
     line=line,
     gas_density=gas_density,
-    # process='coulomb',
-    # coulomb_theta=(1e-3, 20e-3),
-    process='brems',
-    brems_energy_cut=1e6,
-    interaction_length_is_nturns=1
+    process='coulomb',
+    coulomb_theta=(1e-3, 20e-3),
+    # process='brems',
+    # brems_energy_cut=1e6,
 )
 
 beamgas_manager.initialise_beamgas()
+
+
+
+
+
+
+
+
+
+
+
 
 # Generate particle distribution
 particles = line.build_particles(num_particles=1000)

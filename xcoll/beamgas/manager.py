@@ -417,8 +417,7 @@ class BeamGasManager():
             process,
             particle_ref=None,
             brems_energy_cut=10e3,
-            coulomb_theta=(1e-7, 50e-3),
-            interaction_length_is_nturns=None):
+            coulomb_theta=(1e-7, 50e-3)):
     
         self.rng = np.random.default_rng()
 
@@ -435,11 +434,6 @@ class BeamGasManager():
             'particle_id': [None] * len(tt_beamgas.name),
             'interaction': [None] * len(tt_beamgas.name)
         }).reset_index(drop=True)
-
-        # Check that interaction_length_is_nturns is an integere if not None
-        if interaction_length_is_nturns is not None:
-            if not isinstance(interaction_length_is_nturns, int):
-                raise ValueError(f'interaction_length_is_nturns must be an integer number or None. Got {interaction_length_is_nturns} instead.')
             
         self.gas_density = gas_density
 
@@ -449,8 +443,6 @@ class BeamGasManager():
             particle_ref = line.particle_ref
             self.q0 = particle_ref.q0
             self.p0c = particle_ref.p0c[0]
-
-        self.interaction_length_is_nturns = interaction_length_is_nturns
 
         self.atomic_species = {
             element: _atomic_number_from_symbol(element)
@@ -476,20 +468,6 @@ class BeamGasManager():
                 kk: self.brems[kk].compute_xsec()
                 for kk in self.atomic_species
             }
-            if interaction_length_is_nturns is not None:
-                # Cross-section biasing: scale xsec so average interaction length == interaction_length_is_nturns * circumference
-                avg_mfp = [
-                    1 / (np.mean(gas_density[kk]) * self.brems_xsec[kk])
-                    for kk in self.atomic_species
-                ]
-                avg_mfp_tot = 1 / sum(1 / mfp for mfp in avg_mfp)
-
-                circumference = line.get_length()
-                biasing_factor = avg_mfp_tot / (self.interaction_length_is_nturns * circumference)
-
-                for kk in self.atomic_species:
-                    self.brems_xsec[kk] *= biasing_factor
-                print(f'\nBremsstrahlung cross section biased by a factor {int(biasing_factor)}\n')
 
         if process == 'coulomb':
             self.coulomb = {
@@ -500,20 +478,6 @@ class BeamGasManager():
                 kk: self.coulomb[kk].compute_xsec()
                 for kk in self.atomic_species
             }
-            if interaction_length_is_nturns is not None:
-                # Cross-section biasing: scale xsec so average interaction length == interaction_length_is_nturns * circumference
-                avg_mfp = [
-                    1 / (np.mean(gas_density[kk]) * self.coulomb_xsec[kk])
-                    for kk in self.atomic_species
-                ]
-                avg_mfp_tot = 1 / sum(1 / mfp for mfp in avg_mfp)
-
-                circumference = line.get_length()
-                biasing_factor = avg_mfp_tot / (self.interaction_length_is_nturns * circumference)
-
-                for kk in self.atomic_species:
-                    self.coulomb_xsec[kk] *= biasing_factor
-                print(f'\nCoulomb scattering cross section biased by a factor {int(biasing_factor)}\n')
 
         self.scattering_enabled = False
         self._particles_initialised = False
