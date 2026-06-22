@@ -222,10 +222,19 @@ class CoulombScatteringCalculator:
         return PP_OUT[:, 0].tolist(), PP_OUT[:, 1].tolist()
 
 
+    # def compute_xsec(self):
+    #     from scipy.integrate import quad
+    #     return quad(self._compute_dxsec, self.theta_lim[0], self.theta_lim[1])[0]
+    
     def compute_xsec(self):
-        from scipy.integrate import quad
-        return quad(self._compute_dxsec, self.theta_lim[0], self.theta_lim[1])[0]
-
+        # dsigma/dtheta peaks at the screening angle (~few urad) and falls as 1/theta^3.
+        # Adaptive quad over [0, theta_max] cannot resolve that peak once
+        # theta_max >> theta_screen -> sigma_tot came out DECREASING with theta_max.
+        # A dense log grid resolves the peak and is stable/monotonic.
+        th = np.logspace(np.log10(max(self.theta_lim[0], 1e-9)),
+                         np.log10(self.theta_lim[1]), 20000)
+        y = self._compute_dxsec(th)
+        return np.trapezoid(y, th) if hasattr(np, "trapezoid") else np.trapz(y, th)
 
 class BremsstrahlungCalculator:
     def __init__(self, Z, p0c, energy_cut=10e3):
@@ -413,17 +422,41 @@ class BeamGasManager():
     def __init__(
             self,
             line,
+            twiss,
             gas_density,
+            bunch_population,
             process,
+            scattering='off',
+            nemitt_x=None,
+            nemitt_y=None,
+            sigma_z=None,
             particle_ref=None,
             brems_energy_cut=10e3,
-            coulomb_theta=(1e-7, 50e-3)):
+            coulomb_theta_max=50e-3,
+            **kwargs):
     
         self.rng = np.random.default_rng()
 
         # TODO: validation of density_df
-
         self.line = line
+
+        # Compute twiss (use 6D by default, overridable via kwargs['method'])
+        twiss_method = kwargs.pop('method', '6d')
+        if twiss is None:
+            if scattering == 'on':
+                self.scattering.disable()
+            twiss = self.twiss(method=twiss_method, reverse=False)
+            if scattering == 'on':
+                self.scattering.enable()
+
+        self.twiss = twiss
+
+        # Beam parameters
+        self.nemitt_x = nemitt_x
+        self.nemitt_y = nemitt_y
+        self.sigma_z = sigma_z
+
+        self.bunch_population = bunch_population
 
         # Initialise the interactions log
         tab = line.get_table()
@@ -471,7 +504,7 @@ class BeamGasManager():
 
         if process == 'coulomb':
             self.coulomb = {
-                kk: CoulombScatteringCalculator(self.atomic_species[kk], self.q0, self.p0c, theta_lim=coulomb_theta)
+                kk: CoulombScatteringCalculator(self.atomic_species[kk], self.q0, self.p0c, theta_lim=(0, coulomb_theta_max))
                 for kk in self.atomic_species
             }
             self.coulomb_xsec = {
@@ -479,6 +512,7 @@ class BeamGasManager():
                 for kk in self.atomic_species
             }
 
+        self.process = process
         self.scattering_enabled = False
         self._particles_initialised = False
 
@@ -488,18 +522,78 @@ class BeamGasManager():
     def disable_scattering(self):
         self.scattering_enabled = False
 
-    def initialise_beamgas(self):
+    def _compute_integrated_scattering_rate(self, element=None):
+        """
+        Integrate the local beam-gas scattering rate density over the lattice
+        section upstream of each BeamGasScattering element, and store the result
+        (a per-bunch rate in [Hz]) on the element.
+
+        The sum over gas species is carried inside the integrand, so
+        each element receives a single integrated rate
+
+            R_C = \\int_{s_prev}^{s_cur} (N_b / T_rev) * sum_s n_s(s) * sigma_s ds.
+
+        Since the pressure-profile nodes coincide with the BeamGasScattering
+        elements, n_s(s) is linear between consecutive elements and the section
+        integral is an exact two-point trapezoid.
+
+        If `element` is given, only the section upstream of that element is
+        integrated and configured.
+        """
+        bunch_population = self.bunch_population
+        line = self.line
+        tab = line.get_table()
+        twiss = self.twiss
+        t_rev0 = float(twiss.t_rev0)
+
+        gas_density = self.gas_density
+        species = list(self.atomic_species.keys())
+        xsec    = self.coulomb_xsec if self.process == 'coulomb' \
+                  else self.brems_xsec # {species: sigma_tot [m^2]}
+
+        def _rate_density(s):
+            # r(s) = (bunch_population / t_rev0) * sum_s n_s(s) * sigma_s   [1 / (m s)]
+            acc = 0.0
+            for sp in species:
+                n_s = np.interp(s, gas_density.s, gas_density[sp])
+                acc += n_s * xsec[sp]
+            return bunch_population / t_rev0 * acc
+
+        # BeamGasScattering elements, in lattice order, with their s positions
+        tt_bg    = tab.rows[tab.element_type == 'BeamGasScattering']
+        bg_names = tt_bg.name
+        bg_s     = tt_bg.s
+
+        def _integrate_upstream(ii):
+            # section upstream of element ii: [s_prev, s_cur]
+            s_cur  = bg_s[ii]
+            s_prev = 0.0 if ii == 0 else bg_s[ii - 1]
+            r_prev = _rate_density(bg_s[-1]) if ii == 0 else _rate_density(s_prev)
+            r_cur  = _rate_density(s_cur)
+            return 0.5 * (r_prev + r_cur) * (s_cur - s_prev)   # [Hz]
+
+        if element is None:
+            for ii, nn in enumerate(bg_names):
+                integrated = _integrate_upstream(ii)
+                line[nn]._configure(integrated_scattering_rate=integrated)
+        else:
+            if element not in bg_names:
+                raise ValueError(f"{element} is not a BeamGasScattering element.")
+            ii = int(np.where(bg_names == element)[0][0])
+            integrated = _integrate_upstream(ii)
+            line[element]._configure(integrated_scattering_rate=integrated)
+
+    def initialise_beamgas(self, element=None):
         line = self.line
         tab = line.get_table()
 
         tt_beamgas = tab.rows[tab.element_type == 'BeamGasScattering']
-        ds_beamgas = np.diff(np.concatenate([[0], tt_beamgas.s]))
 
         gas_density = self.gas_density
         atomic_species = self.atomic_species
 
         # Helper to config all fields to a single BeamGas
-        def _config(nn, ds):
+        def _config(nn):
             try:
                 s = tab.rows[nn].s[0]
             except Exception:
@@ -511,28 +605,27 @@ class BeamGasManager():
                 atomic_densities[aa] = float(n_at)
 
             elem = line[nn] # xc.BeamGasScattering
-            # element_index = line.element_names.index(nn)
+            element_index = line.element_names.index(nn)
 
             elem._configure(
                 name=nn,
                 manager=self,
-                ds=ds,
+                s=s,
+                element_index=element_index,
                 atomic_densities=atomic_densities,
             )
 
-        # for nn in tab.name[:-1]: # Avoid the last tab.name which is _end_point
-        #     if isinstance(line[nn], xc.BeamGasScattering):
-        #         print(f'Initialising BeamGasScattering for {nn}')
-        #         _config(nn)
+        if element is None:
+            for nn in tt_beamgas.name:
+                print(f'Initialising BeamGasScattering for {nn}')
+                _config(nn)
+        else:
+            # TODO: check that here element is a xc.BeamGasScattering
+            print(f'Initialising BeamGasScattering for {element}')
+            _config(element)
 
-        for nn, ds in zip(tt_beamgas.name, ds_beamgas):
-            print(f'Initialising BeamGasScattering for {nn}')
-            _config(nn, ds)
+        # Compute integrated beam-gas scattering rate
+        self._compute_integrated_scattering_rate(element)
 
         # BeamGas calculator as xo.HybridClass ??
         # dxsec
-            
-    def initialise_particles(self, particles):
-        n_part = particles._num_active_particles
-        particles.weight[:n_part] = -np.log(self.rng.random(n_part))
-        self._particles_initialised = True

@@ -73,19 +73,28 @@ line.configure_bend_model(core='full', edge=None)
 ######################################################
 # Insert beam-gas scattering centers
 ######################################################
-# We insert beam-gas scattering centers in the middle of each magnet
-tab = line.get_table()
-tab_bends_quads = tab.rows[(tab.element_type == 'Bend') | (tab.element_type == 'Quadrupole')]
+# # We insert beam-gas scattering centers in the middle of each magnet
+# tab = line.get_table()
+# tab_bends_quads = tab.rows[(tab.element_type == 'Bend') | (tab.element_type == 'Quadrupole')]
 
-for ii, nn in enumerate(tab_bends_quads.name):
-    beamgas_name = f'BeamGasScattering.{ii}'
-    env.elements[beamgas_name] = xc.BeamGasScattering()
-    line.insert(beamgas_name, at=0.0, from_=nn)
+# for ii, nn in enumerate(tab_bends_quads.name):
+#     beamgas_name = f'BeamGasScattering.{ii}'
+#     env.elements[beamgas_name] = xc.BeamGasScattering()
+#     line.insert(beamgas_name, at=0.0, from_=nn)
+
+# # The last BeamGasScattering element has to be placed at the end of the line
+# beamgas_name = f'BeamGasScattering.{ii+1}'
+# env.elements[beamgas_name] = xc.BeamGasScattering()
+# line.insert(beamgas_name, at=tab.s[-1])
+
+tab = line.get_table()
 
 # The last BeamGasScattering element has to be placed at the end of the line
-beamgas_name = f'BeamGasScattering.{ii+1}'
-env.elements[beamgas_name] = xc.BeamGasScattering()
-line.insert(beamgas_name, at=tab.s[-1])
+s_beamgas_to_insert = np.linspace(0, 21.2, 16)[1:]
+for ii, ss in enumerate(s_beamgas_to_insert):
+    beamgas_name = f'BeamGasScattering.{ii}'
+    env.elements[beamgas_name] = xc.BeamGasScattering()
+    line.insert(beamgas_name, at=ss)
 
 ######################################################
 # Install apertures
@@ -155,7 +164,7 @@ beamgas_manager = xc.BeamGasManager(
     nemitt_x=nemitt_x, nemitt_y=nemitt_y,
     sigma_z=sigma_z,
     process='coulomb',
-    coulomb_theta_max=20e-3,
+    coulomb_theta_max=50e-3,
     # process='brems',
     # brems_energy_cut=1e6,
 )
@@ -182,10 +191,13 @@ for ii, element in enumerate(tt_beamgas.name):
 
     particles_list.append(particles)
 
-# Merge the macro-particle sets from all scattering elements into a single collection
-particles = xt.Particles.merge(particles_list)
-
+######################################################
 # Optional: Refine loss location to improve loss map accuracy
+######################################################
+# NOTE: we refine each macro-particle set separately (rather than refining a
+# single merged collection). The refinement is performed per particle and is
+# independent, so this is physically identical to refining the merged set, but
+# it keeps the per-source sets distinct so we can color them in the loss map.
 loss_loc_refinement = xt.LossLocationRefinement(line,
     n_theta = 360, # Angular resolution in the polygonal approximation of the aperture
     r_max = 0.5,   # Maximum transverse aperture in m
@@ -193,30 +205,55 @@ loss_loc_refinement = xt.LossLocationRefinement(line,
     ds = 0.1,      # Longitudinal loss refinement accuracy [m]
     )
 
-loss_loc_refinement.refine_loss_location(particles)
+# The same refinement object can be reused for every particle set: the
+# interpolated aperture model is built from the line, not from the particles.
+for particles in particles_list:
+    loss_loc_refinement.refine_loss_location(particles)
 
 ######################################################
 # Compute lifetime
 ######################################################
-# Keep lost particles only
-particles = particles.filter(particles.state == 0)
-# Compute total loss rate
-loss_rate = sum(particles.weight)
+# Keep only the lost particles (state == 0) in each per-source set
+lost_list = [p.filter(p.state == 0) for p in particles_list]
+
+# Total loss rate summed over all scattering sources
+loss_rate = sum(np.sum(lost.weight) for lost in lost_list)
 # Compute lifetime
 lifetime = bunch_population / loss_rate
 
 ######################################################
-# Plot: loss map
+# Plot: loss map with per-source (stacked) contributions
 ######################################################
 circumference = line.get_length()
 binwidth = 0.1 # m
+bins = np.arange(0, circumference + binwidth, binwidth)
+
+# Per-source data for the stacked histogram (loss rate converted to kHz)
+s_per_source = [lost.s for lost in lost_list]
+w_per_source = [lost.weight * 1e-3 for lost in lost_list]
+labels = [f'{nn} @ s={ss:.1f} m'
+          for nn, ss in zip(tt_beamgas.name, tt_beamgas.s)]
+
+# A distinct color per scattering source
+n_src = len(lost_list)
+if n_src <= 10:
+    cmap = plt.get_cmap('tab10')
+    colors = [cmap(i) for i in range(n_src)]
+elif n_src <= 20:
+    cmap = plt.get_cmap('tab20')
+    colors = [cmap(i) for i in range(n_src)]
+else:
+    cmap = plt.get_cmap('turbo')
+    colors = [cmap(x) for x in np.linspace(0, 1, n_src)]
 
 plt.close('all')
+plt.figure(figsize=(12, 6))
 plt.title(f'Toy ring Coulomb loss map (Coulomb lifetime: {lifetime/60:.2f} min)')
-plt.hist(particles.s, bins=np.arange(0, circumference + binwidth, binwidth), weights=particles.weight*1e-3)
-for ss in tt_beamgas.s:
-    plt.axvline(ss, color='r', linestyle='--', linewidth=0.5)
+plt.hist(s_per_source, bins=bins, weights=w_per_source,
+         stacked=True, color=colors, label=labels)
 plt.xlabel('s [m]')
 plt.ylabel('Loss rate [kHz]')
+plt.legend(title='Scattering source', fontsize=7, ncol=2, loc='upper right')
 plt.grid()
+plt.tight_layout()
 plt.savefig('plot.png', dpi=300)
