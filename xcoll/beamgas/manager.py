@@ -223,8 +223,11 @@ class CoulombScatteringCalculator:
 
 
     def compute_xsec(self):
-        from scipy.integrate import quad
-        return quad(self._compute_dxsec, self.theta_lim[0], self.theta_lim[1])[0]
+        As = self._screening_As()
+        z1 = 1.0 - np.cos(self.theta_lim[0])
+        z2 = 1.0 - np.cos(self.theta_lim[1])
+        return 2.0 * np.pi * self.Z**2 * CLASSICAL_ELECTRON_RADIUS**2 \
+            / (self.beta**4 * self.gamma**2) * (1.0/(2*As + z1) - 1.0/(2*As + z2))
 
 
 class BremsstrahlungCalculator:
