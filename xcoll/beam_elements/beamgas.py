@@ -96,6 +96,7 @@ class BeamGasScattering(xt.BeamElement):
             interacting_particles = particles.filter(mask_interacting)
 
             px, py, delta = [], [], []
+            beamgas_weight = []
             npp = 0
             for gas, ngas in gas_counter.items():
                 mask = np.zeros(n_interactions, dtype=bool)
@@ -104,14 +105,13 @@ class BeamGasScattering(xt.BeamElement):
                 pp_ids = interacting_particle_ids[mask]
 
                 if self.manager.brems is not None:
-                    # Bremsstrahlung
                     _px, _py, _delta = self.manager.brems[gas].sample_deflections(pp, ngas)
+                    _bgw = [1.0] * ngas # brems unweighted
                 elif self.manager.coulomb is not None:
-                    # Coulomb scattering
-                    _px, _py = self.manager.coulomb[gas].sample_deflections(pp, ngas)
+                    _px, _py, _bgw = self.manager.coulomb[gas].sample_deflections(pp, ngas)
                     _delta = pp.delta.tolist()
 
-                px.extend(_px); py.extend(_py); delta.extend(_delta)
+                px.extend(_px); py.extend(_py); delta.extend(_delta); beamgas_weight.extend(_bgw)
 
                 # Update interactions log with the correct gas species for these particles
                 row_idx = self._log_row_idx
@@ -136,5 +136,9 @@ class BeamGasScattering(xt.BeamElement):
             delta_temp = particles.delta.copy()
             delta_temp[mask_interacting] = delta
             particles.update_delta(delta_temp)
+
+            self.manager.beamgas_weight.update(
+                dict(zip(interacting_particle_ids.tolist(), beamgas_weight)))
+            # self.manager._nint = getattr(self.manager, '_nint', 0) + int(n_interactions)
         else:
             return

@@ -191,36 +191,72 @@ class CoulombScatteringCalculator:
         return np.array(out[:n])
 
 
-    def sample_deflections(self, particles, n):
-        phi = np.random.uniform(0.0, 2.0*np.pi, n)
-        theta = self._sample_theta(n)
+    # def sample_deflections(self, particles, n):
+    #     phi = np.random.uniform(0.0, 2.0*np.pi, n)
+    #     theta = self._sample_theta(n)
 
+    #     sintheta = np.sin(theta); costheta = np.cos(theta)
+    #     sinphi = np.sin(phi);     cosphi = np.cos(phi)
+
+    #     pz = np.sqrt((1.0 + particles.delta)**2 - particles.px**2 - particles.py**2)
+    #     PP = np.column_stack((particles.px, particles.py, pz))
+    #     norms = np.linalg.norm(PP, axis=1, keepdims=True)
+    #     PP_HAT = PP / norms
+
+    #     UU_HAT = np.zeros_like(PP_HAT)
+    #     tol = 1e-12
+    #     mask = (PP_HAT[:, 0]**2 + PP_HAT[:, 1]**2) < tol**2
+
+    #     UU_HAT[~mask] = np.stack([-PP_HAT[~mask, 1], PP_HAT[~mask, 0], np.zeros_like(PP_HAT[~mask, 0])], axis=1)
+    #     UU_HAT[mask] = np.array([1.0, 0.0, 0.0])
+    #     UU_HAT /= np.linalg.norm(UU_HAT, axis=1, keepdims=True)
+
+    #     VV_HAT = np.cross(PP_HAT, UU_HAT)
+
+    #     scattered_dir = (
+    #         sintheta[:, None] * cosphi[:, None] * UU_HAT +
+    #         sintheta[:, None] * sinphi[:, None] * VV_HAT +
+    #         costheta[:, None] * PP_HAT
+    #     )
+    #     PP_OUT = scattered_dir * norms
+    #     return PP_OUT[:, 0].tolist(), PP_OUT[:, 1].tolist()
+
+    def sample_deflections(self, particles, n, theta_lim=None):
+        theta_lim = self.theta_lim if theta_lim is None else theta_lim
+        As = self._screening_As()
+        z1 = 1.0 - np.cos(theta_lim[0])
+        z2 = 1.0 - np.cos(theta_lim[1])
+
+        # proposal g(z) = 1/(z ln(z2/z1))  (log-uniform in z to over-weight large angles)
+        u = np.random.random(n)
+        z = np.exp(np.log(z1) + u*(np.log(z2) - np.log(z1)))
+        theta = np.arccos(np.clip(1.0 - z, -1.0, 1.0))
+
+        # target f(z) ∝ 1/(2As+z)^2  (screened Rutherford, R=F2~1, same as compute_xsec)
+        I = 1.0/(2*As + z1) - 1.0/(2*As + z2)          # normalisation of f
+        f = (1.0/(2*As + z)**2) / I
+        g = 1.0/(z * np.log(z2/z1))
+        beamgas_weight = f / g                                # mean(beamgas_weight) -> 1 under g
+
+        phi = np.random.uniform(0.0, 2.0*np.pi, n)
         sintheta = np.sin(theta); costheta = np.cos(theta)
         sinphi = np.sin(phi);     cosphi = np.cos(phi)
-
         pz = np.sqrt((1.0 + particles.delta)**2 - particles.px**2 - particles.py**2)
         PP = np.column_stack((particles.px, particles.py, pz))
         norms = np.linalg.norm(PP, axis=1, keepdims=True)
         PP_HAT = PP / norms
-
-        UU_HAT = np.zeros_like(PP_HAT)
-        tol = 1e-12
+        UU_HAT = np.zeros_like(PP_HAT); tol = 1e-12
         mask = (PP_HAT[:, 0]**2 + PP_HAT[:, 1]**2) < tol**2
-
         UU_HAT[~mask] = np.stack([-PP_HAT[~mask, 1], PP_HAT[~mask, 0], np.zeros_like(PP_HAT[~mask, 0])], axis=1)
         UU_HAT[mask] = np.array([1.0, 0.0, 0.0])
         UU_HAT /= np.linalg.norm(UU_HAT, axis=1, keepdims=True)
-
         VV_HAT = np.cross(PP_HAT, UU_HAT)
-
-        scattered_dir = (
-            sintheta[:, None] * cosphi[:, None] * UU_HAT +
-            sintheta[:, None] * sinphi[:, None] * VV_HAT +
-            costheta[:, None] * PP_HAT
-        )
+        scattered_dir = (sintheta[:, None]*cosphi[:, None]*UU_HAT
+                        + sintheta[:, None]*sinphi[:, None]*VV_HAT
+                        + costheta[:, None]*PP_HAT)
         PP_OUT = scattered_dir * norms
-        return PP_OUT[:, 0].tolist(), PP_OUT[:, 1].tolist()
-
+        return PP_OUT[:, 0].tolist(), PP_OUT[:, 1].tolist(), beamgas_weight.tolist()
+    
 
     def compute_xsec(self):
         As = self._screening_As()
@@ -524,6 +560,7 @@ class BeamGasManager():
                     self.coulomb_xsec[kk] *= biasing_factor
                 print(f'\nCoulomb scattering cross section biased by a factor {int(biasing_factor)}\n')
 
+        self.beamgas_weight = {}
         self.scattering_enabled = False
         self._particles_initialised = False
 
