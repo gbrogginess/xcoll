@@ -16,6 +16,7 @@ import scipy.constants as sc
 
 KB = sc.Boltzmann
 T_ROOM = 293.15 # K
+C_LIGHT = sc.speed_of_light
 
 ######################################################
 # Beam parameters
@@ -73,19 +74,28 @@ line.configure_bend_model(core='full', edge=None)
 ######################################################
 # Insert beam-gas scattering centers
 ######################################################
-# We insert beam-gas scattering centers in the middle of each magnet
-tab = line.get_table()
-tab_bends_quads = tab.rows[(tab.element_type == 'Bend') | (tab.element_type == 'Quadrupole')]
+# # We insert beam-gas scattering centers in the middle of each magnet
+# tab = line.get_table()
+# tab_bends_quads = tab.rows[(tab.element_type == 'Bend') | (tab.element_type == 'Quadrupole')]
 
-for ii, nn in enumerate(tab_bends_quads.name):
-    beamgas_name = f'BeamGasScattering.{ii}'
-    env.elements[beamgas_name] = xc.BeamGasScattering()
-    line.insert(beamgas_name, at=0.0, from_=nn)
+# for ii, nn in enumerate(tab_bends_quads.name):
+#     beamgas_name = f'BeamGasScattering.{ii}'
+#     env.elements[beamgas_name] = xc.BeamGasScattering()
+#     line.insert(beamgas_name, at=0.0, from_=nn)
+
+# # The last BeamGasScattering element has to be placed at the end of the line
+# beamgas_name = f'BeamGasScattering.{ii+1}'
+# env.elements[beamgas_name] = xc.BeamGasScattering()
+# line.insert(beamgas_name, at=tab.s[-1])
+
+tab = line.get_table()
 
 # The last BeamGasScattering element has to be placed at the end of the line
-beamgas_name = f'BeamGasScattering.{ii+1}'
-env.elements[beamgas_name] = xc.BeamGasScattering()
-line.insert(beamgas_name, at=tab.s[-1])
+s_beamgas_to_insert = np.linspace(0, 21.2, 16)[1:]
+for ii, ss in enumerate(s_beamgas_to_insert):
+    beamgas_name = f'BeamGasScattering.{ii}'
+    env.elements[beamgas_name] = xc.BeamGasScattering()
+    line.insert(beamgas_name, at=ss)
 
 ######################################################
 # Install apertures
@@ -125,7 +135,7 @@ tt_beamgas = tab.rows[tab.element_type == 'BeamGasScattering']
 
 # Let's consider N_2 and pressure = 1e-5 mbar at room temperature
 _mbar_to_pascal = 1e2
-pressure_mbar = 1e-5
+pressure_mbar = 1e-7
 pressure_pascal = pressure_mbar * _mbar_to_pascal
 
 atomic_density = 2 * pressure_pascal / (KB * T_ROOM)
@@ -147,10 +157,10 @@ gas_density = xt.Table(
 beamgas_manager = xc.BeamGasManager(
     line=line,
     gas_density=gas_density,
-    # process='coulomb',
-    # coulomb_theta=(1e-3, 20e-3),
-    process='brems',
-    brems_energy_cut=1e6,
+    process='coulomb',
+    coulomb_theta=(8e-3, 20e-3),
+    # process='brems',
+    # brems_energy_cut=1e6,
     interaction_length_is_nturns=1
 )
 
@@ -170,4 +180,22 @@ line.track(particles, num_turns=1)
 # Disable beam-gas scattering
 beamgas_manager.disable_scattering()
 
-line.track(particles, num_turns=9)
+line.track(particles, num_turns=99)
+
+loss_loc_refinement = xt.LossLocationRefinement(line,
+    n_theta = 360, # Angular resolution in the polygonal approximation of the aperture
+    r_max = 0.5,   # Maximum transverse aperture in m
+    dr = 50e-6,    # Transverse loss refinement accuracy [m]
+    ds = 0.1,      # Longitudinal loss refinement accuracy [m]
+    )
+
+loss_loc_refinement.refine_loss_location(particles)
+
+# Compute lifetime
+circumference = line.get_length()
+t_rev = circumference / C_LIGHT
+surviving_fraction = particles._num_active_particles / 1000
+
+lifetime = -t_rev * beamgas_manager.biasing_factor / np.log(surviving_fraction)
+
+print(lifetime/60)
