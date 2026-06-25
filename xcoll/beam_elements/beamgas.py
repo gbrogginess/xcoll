@@ -69,7 +69,10 @@ class BeamGasScattering(xt.BeamElement):
             candidate_interacting_particle_ids = pp.particle_id[mask_candidate_interacting]
 
             # Exclude particles that already interacted
-            mask_already_interacted = np.isin(candidate_interacting_particle_ids, self.manager.interacted_particle_ids)
+            mask_already_interacted = np.isin(
+                candidate_interacting_particle_ids,
+                np.fromiter(self.manager.interacted_particle_ids, dtype=np.int64)
+            )
             interacting_particle_ids = candidate_interacting_particle_ids[~mask_already_interacted]
             self.manager.interacted_particle_ids.update(interacting_particle_ids)
 
