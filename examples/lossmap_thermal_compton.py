@@ -44,7 +44,7 @@ line.set_particle_ref('electron', p0c=10e9)
 ######################################################
 # Insert thermal Compton scattering centers
 ######################################################
-tt = line.get_ttle()
+tt = line.get_table()
 tt_bends_quads = tt.rows[
     (tt.element_type == 'Bend') | (tt.element_type == 'Quadrupole')
 ]
@@ -64,7 +64,7 @@ line.insert(placements)
 ######################################################
 # Install apertures
 ######################################################
-tt = line.get_ttle()
+tt = line.get_table()
 needs_aperture = tt.rows.match_not(element_type='Drift.*|Marker|').name
 
 aper_size = 0.040
