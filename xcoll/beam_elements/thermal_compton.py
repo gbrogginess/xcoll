@@ -13,6 +13,8 @@ from scipy.constants import physical_constants
 import xobjects as xo
 import xtrack as xt
 
+from ..general import _pkg_root
+
 THOMSON_CROSS_SECTION = physical_constants['Thomson cross section'][0]  # [m^2]
 APERY_ZETA3 = 1.2020569031595943
 APERY_ZETA4 = 1.0823232337111382
@@ -239,7 +241,7 @@ class ThermalComptonScattering(xt.BeamElement):
     _depends_on = [xt.RandomUniformAccurate]
 
     _extra_c_sources = [
-        '#include "xcoll/beam_elements/elements_src/thermal_compton.h"'
+        _pkg_root.joinpath('beam_elements', 'elements_src', 'thermal_compton.h')
     ]
 
     _per_particle_kernels = {
