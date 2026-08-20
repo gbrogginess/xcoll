@@ -11,6 +11,10 @@ from .fluka import FlukaCollimator, FlukaCrystal
 from .geant4 import Geant4Collimator, Geant4CollimatorTip, Geant4Crystal
 from .blowup import BlowUp
 from .monitor import EmittanceMonitor
+from .thermal_compton import (ThermalComptonScattering,
+                              blackbody_photon_density,
+                              blackbody_mean_photon_energy,
+                              THOMSON_CROSS_SECTION)
 
 block_classes = tuple(v for v in globals().values()
                       if isinstance(v, type) and issubclass(v, BaseBlock) and v != BaseBlock
@@ -22,4 +26,4 @@ collimator_classes = tuple(v for v in globals().values()
 crystal_classes = tuple(v for v in globals().values()
                         if isinstance(v, type) and issubclass(v, BaseCrystal) and v != BaseCrystal)
 
-element_classes = block_classes + (BlowUp, EmittanceMonitor)
+element_classes = block_classes + (BlowUp, EmittanceMonitor, ThermalComptonScattering)
