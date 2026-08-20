@@ -82,7 +82,7 @@ class ThermalComptonScattering(xt.BeamElement):
     (``track`` is a no-op): all the physics happens in :meth:`scatter`.
 
     The Monte Carlo kernel is implemented in C99 (see
-    ``thermal_compton_src/thermal_compton.h``) and follows the proposal method
+    ``elements_src/thermal_compton.h``) and follows the proposal method
     of H. Burkhardt [1]: trial angles are drawn from the Thomson angular
     distribution and accepted with the Klein-Nishina to Thomson ratio, so that
     accepted events follow the Klein-Nishina distribution while the absolute
@@ -237,7 +237,7 @@ class ThermalComptonScattering(xt.BeamElement):
     _depends_on = [xt.RandomUniformAccurate]
 
     _extra_c_sources = [
-        '#include "xcoll/beam_elements/thermal_compton_src/thermal_compton.h"'
+        '#include "xcoll/beam_elements/elements_src/thermal_compton.h"'
     ]
 
     _per_particle_kernels = {
