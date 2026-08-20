@@ -234,6 +234,8 @@ class ThermalComptonScattering(xt.BeamElement):
     isthick = False
     behaves_like_drift = False
 
+    _noexpr_fields = {'element_name'}
+
     _depends_on = [xt.RandomUniformAccurate]
 
     _extra_c_sources = [

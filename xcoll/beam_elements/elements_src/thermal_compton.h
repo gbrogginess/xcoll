@@ -234,14 +234,15 @@ void ThermalComptonScattering_track_local_particle(
 
 
 /*
- * Per-particle kernel.  Each "particle" of `part0` is one macro-lepton of the
- * local beam distribution; it is given `n_trials` independent scattering trials
+ * Per-particle kernel, invoked once per macro-lepton by the auto-generated
+ * `_scatter` wrapper (see `_per_particle_kernels` in thermal_compton.py).
+ * Each call is given `n_trials` independent scattering trials
  * representing the section length, and writes the accepted *tail* events
  * (|delta| >= delta_threshold) into its own slice of the output arrays
  * [islot*max_events, (islot+1)*max_events).
  */
 void ThermalComptonScatter(ThermalComptonScatteringData el,
-                           LocalParticle* part0,
+                           LocalParticle* part,
                            /*gpuglmem*/ double* x_out,
                            /*gpuglmem*/ double* px_out,
                            /*gpuglmem*/ double* y_out,
@@ -265,8 +266,6 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
     int64_t const tail_veto       = ThermalComptonScatteringData_get_enable_tail_veto(el);
 
     double const kT = XC_KB_EV*temperature;
-
-    //start_per_particle_block (part0->part)
 
         int64_t const islot = LocalParticle_get_particle_id(part);
         int64_t const base  = islot*max_events;
@@ -421,8 +420,6 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
         n_dropped_out[islot]        = n_dropped;
         rate_scattering_out[islot]  = rate_all;
         energy_loss_rate_out[islot] = eloss;
-
-    //end_per_particle_block
 }
 
 #endif /* XCOLL_THERMAL_COMPTON_H */
