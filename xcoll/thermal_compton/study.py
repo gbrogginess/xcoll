@@ -109,7 +109,7 @@ class ThermalComptonStudy:
                  n_trials_pilot=200, n_macroparticles_pilot=None,
                  max_events_per_macro=None,
                  section_assignment='centered',
-                 n_sigma_cut=5.0,
+                 n_sigma_cut=3.0,
                  enable_tail_veto=True,
                  seed=None, **kwargs):
         """
