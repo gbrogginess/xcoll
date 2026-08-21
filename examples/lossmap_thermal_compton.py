@@ -35,7 +35,7 @@ sigma_delta = 1e-3
 beam_current = 0.3            # [A]
 temperature = 300.0           # [K] warm vacuum chamber
 
-nturns = 100                  # tracking turns
+nturns = 200                  # tracking turns
 refine_loss_locations = True
 
 ######################################################
