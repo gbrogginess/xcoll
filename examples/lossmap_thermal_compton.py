@@ -139,6 +139,7 @@ compton = xc.ThermalComptonStudy(
 # element by element with a cheap pilot run.
 compton.initialise()
 
+print('\n================================================================================')
 print(f'Photon density:            {compton.photon_density*1e-6:.3e} cm^-3')
 print(f'Mean photon energy:        {compton.mean_photon_energy:.4f} eV')
 print(f'Stored particles:          {compton.n_particles:.3e}')
@@ -149,6 +150,7 @@ gamma0 = line.particle_ref.gamma0[0]
 print(f'Max reachable |delta|:     '
       f'{4*gamma0**2*compton.mean_photon_energy/line.particle_ref.p0c[0]:.2e} '
       f'(mean photon; the spectrum tail reaches further)')
+print('================================================================================')
 
 print('\nStatistics sized per element (loss-candidate fraction and trials):')
 for nn in compton.elements:
@@ -157,6 +159,7 @@ for nn in compton.elements:
           f'{elem.delta_pos*100:+.3f}) %   p_event = '
           f'{compton.event_probability[nn]:.2e}   n_trials = '
           f'{elem.n_trials}')
+print()
 
 result = compton.run(
     track=True,
@@ -168,6 +171,9 @@ result = compton.run(
 print()
 print(result.local_rates)
 print()
+print('\n============================================================')
+print('Results')
+print('============================================================')
 print(f'Compton scattering rate:  {result.rate_scattering*1e-3:.3f} kHz '
       f'(analytic: {compton.analytic_rate()*1e-3:.3f} kHz)')
 print(f'Loss-candidate rate:      {result.rate_tail*1e-3:.3f} kHz '
@@ -179,6 +185,7 @@ print(f'Tracked loss rate:        {result.rate_tracking*1e-3:.3f} kHz '
       f'({100*result.rate_tracking/result.rate_tail:.1f} % of the '
       f'loss candidates are lost in {nturns} turns)')
 print(f'Thermal Compton lifetime: {result.lifetime_tracking/3600:.2f} h')
+print('============================================================')
 
 ######################################################
 # Optional: refine loss locations
