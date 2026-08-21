@@ -3,6 +3,8 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
+import warnings
+
 import numpy as np
 from scipy.constants import c as C_LIGHT
 from scipy.constants import k as BOLTZMANN_SI
@@ -78,9 +80,9 @@ class ThermalComptonScattering(xt.BeamElement):
     of length ``section_length``.  When :meth:`scatter` is called, a sample of
     macro-leptons is drawn from the local (Gaussian) beam distribution, each
     macro-lepton is given ``n_trials`` independent scattering trials
-    representing the section length, and the macro-particles whose momentum
-    deviation changed by more than ``delta_threshold`` are returned with an
-    absolute rate weight in Hz.  The element is *passive* during tracking
+    representing the section length, and the macro-particles ending up outside
+    the local momentum acceptance ``[delta_neg, delta_pos]`` are returned with
+    an absolute rate weight in Hz.  The element is *passive* during tracking
     (``track`` is a no-op): all the physics happens in :meth:`scatter`.
 
     The Monte Carlo kernel is implemented in C99 (see
@@ -124,19 +126,22 @@ class ThermalComptonScattering(xt.BeamElement):
     n_trials : int, optional
         Number of scattering trials per macro-lepton.  Each trial represents a
         path length ``section_length/n_trials``.
+    delta_neg, delta_pos : float, optional
+        Local momentum acceptance of the lattice at this element (negative and
+        positive limits).  Only the scattered leptons ending up outside this
+        window are returned for tracking: they are the only ones that can be
+        lost.  Normally set by :class:`xcoll.ThermalComptonStudy` from a local
+        momentum acceptance table, scaled by a safety factor.
     delta_threshold : float, optional
-        Thinning threshold on the *change* of the relative momentum deviation
-        ``|delta_out - delta_in|``.  Only events above this threshold are
-        returned for tracking.  It is a numerical importance threshold and must
-        be chosen well below the ring momentum acceptance; it is *not* the
-        machine acceptance.
+        Convenience alternative to ``delta_neg``/``delta_pos``: sets a
+        symmetric acceptance window ``[-delta_threshold, +delta_threshold]``.
     max_events_per_macro : int, optional
         Capacity of the per-macro-particle output slice.  Events beyond this
         number are counted in :attr:`n_dropped` and lost; a warning is issued.
     enable_tail_veto : bool, optional
-        Enable the exact early veto of the trials that cannot reach
-        ``delta_threshold``.  Speeds up the generation without changing the
-        result; switch it off only for debugging.
+        Enable the exact early veto of the trials that cannot push the lepton
+        out of the acceptance window.  Speeds up the generation without
+        changing the result; switch it off only for debugging.
     n_sigma_cut : float or None, optional
         Truncation of the Gaussian beam distribution used to draw the
         macro-leptons.  ``None`` for no truncation.
@@ -146,16 +151,21 @@ class ThermalComptonScattering(xt.BeamElement):
     rate_scattering : float
         Total Compton scattering rate represented by the last call to
         :meth:`scatter` [1/s], i.e. the sum of the weights of *all* accepted
-        Compton events, including those below ``delta_threshold``.
+        Compton events, including the soft ones that stay inside the
+        acceptance.
     rate_tail : float
-        Rate carried by the returned (above threshold) particles [1/s].
+        Rate carried by the returned particles, i.e. the rate of events falling
+        outside the local momentum acceptance [1/s].
     energy_loss_rate : float
         Energy carried away by the scattered photons per unit time in this
         section [eV/s].  Can be compared with the analytic inverse-Compton
         power :math:`P = (4/3)\\,\\sigma_T c\\,\\gamma^2\\beta^2 U_\\gamma`.
     n_dropped : int
-        Number of tail events that could not be stored (output slice full, or
-        backward-going lepton).
+        Number of selected events that could not be stored (output slice full,
+        or backward-going lepton).
+    n_outside_acceptance : int
+        Number of macro-leptons that were drawn already outside the local
+        momentum acceptance and were therefore skipped (should be zero).
 
     Notes
     -----
@@ -229,7 +239,8 @@ class ThermalComptonScattering(xt.BeamElement):
         'sigma_z': xo.Float64,
         'sigma_delta': xo.Float64,
         'n_trials': xo.Int64,
-        'delta_threshold': xo.Float64,
+        'delta_neg': xo.Float64,
+        'delta_pos': xo.Float64,
         'enable_tail_veto': xo.Int64,
     }
 
@@ -258,6 +269,7 @@ class ThermalComptonScattering(xt.BeamElement):
                 xo.Arg(xo.Float64, name='weight_out', pointer=True),
                 xo.Arg(xo.Int64,   name='n_events_out', pointer=True),
                 xo.Arg(xo.Int64,   name='n_dropped_out', pointer=True),
+                xo.Arg(xo.Int64,   name='n_outside_out', pointer=True),
                 xo.Arg(xo.Float64, name='rate_scattering_out', pointer=True),
                 xo.Arg(xo.Float64, name='energy_loss_rate_out', pointer=True),
                 xo.Arg(xo.Float64, name='weight_per_trial'),
@@ -280,7 +292,8 @@ class ThermalComptonScattering(xt.BeamElement):
                  sigma_z=0.0, sigma_delta=0.0,
                  n_macroparticles=1000,
                  n_trials=100,
-                 delta_threshold=1e-3,
+                 delta_neg=-1.0, delta_pos=1.0,
+                 delta_threshold=None,
                  max_events_per_macro=None,
                  enable_tail_veto=True,
                  n_sigma_cut=5.0,
@@ -337,7 +350,11 @@ class ThermalComptonScattering(xt.BeamElement):
         self.sigma_z = sigma_z
         self.sigma_delta = sigma_delta
         self.n_trials = n_trials
-        self.delta_threshold = delta_threshold
+        self.delta_neg = delta_neg
+        self.delta_pos = delta_pos
+        if delta_threshold is not None:
+            # Convenience: symmetric acceptance window
+            self.delta_threshold = delta_threshold
         self.enable_tail_veto = int(bool(enable_tail_veto))
 
         # Python-side configuration (not needed by the kernel)
@@ -354,6 +371,101 @@ class ThermalComptonScattering(xt.BeamElement):
     ############################################################
     # Properties
     ############################################################
+    @property
+    def delta_threshold(self):
+        """
+        Half-width of the momentum acceptance window, for a symmetric window.
+
+        This is a convenience view of :attr:`delta_neg` and :attr:`delta_pos`:
+        reading it returns ``min(|delta_neg|, delta_pos)``, writing it sets a
+        symmetric window ``[-value, +value]``.  Prefer configuring the element
+        with the local momentum acceptance of the lattice
+        (:meth:`set_momentum_acceptance`), which is what
+        :class:`xcoll.ThermalComptonStudy` does.
+
+        Returns
+        -------
+        delta_threshold : float
+            Half-width of the acceptance window.
+        """
+        return min(abs(self.delta_neg), abs(self.delta_pos))
+
+    @delta_threshold.setter
+    def delta_threshold(self, value):
+        """
+        Set a symmetric momentum acceptance window.
+
+        Parameters
+        ----------
+        value : float
+            Half-width of the window.  Must be positive.
+
+        Returns
+        -------
+        None
+        """
+        if value <= 0:
+            raise ValueError("`delta_threshold` must be positive.")
+        self.delta_neg = -float(value)
+        self.delta_pos = float(value)
+
+    @property
+    def n_sigma_cut_delta(self):
+        """
+        Effective longitudinal cutoff of the sampled beam distribution.
+
+        The macro-leptons must be drawn strictly *inside* the local momentum
+        acceptance: a particle born outside it would be selected (and weighted)
+        without any physical scattering, with a diverging Monte Carlo rate.
+        The longitudinal Gaussian cutoff is therefore reduced, at each element,
+        to
+
+        .. math::
+            n_{\\sigma,\\delta} = \\min\\left(n_{\\sigma},\\;
+                0.85\\,\\frac{\\min(|\\delta_-|, \\delta_+)}
+                                {\\sigma_\\delta}\\right)
+
+        (the same protection as the ``nz_eff`` of the xfields Touschek study).
+
+        Returns
+        -------
+        n_sigma_cut_delta : float
+            Effective cutoff in units of ``sigma_delta``.
+        """
+        if self.sigma_delta <= 0:
+            return self.n_sigma_cut
+        limit = (0.85*min(abs(self.delta_neg), abs(self.delta_pos))
+                 / self.sigma_delta)
+        if self.n_sigma_cut is None:
+            return limit
+        return min(float(self.n_sigma_cut), limit)
+
+    def set_momentum_acceptance(self, delta_neg, delta_pos):
+        """
+        Set the local momentum acceptance window used to select the events.
+
+        Only the scattered leptons ending up outside ``[delta_neg, delta_pos]``
+        are retained for tracking: they are the only ones that can be lost.
+
+        Parameters
+        ----------
+        delta_neg : float
+            Negative local momentum acceptance (negative number).
+        delta_pos : float
+            Positive local momentum acceptance (positive number).
+
+        Returns
+        -------
+        None
+        """
+        delta_neg = float(delta_neg)
+        delta_pos = float(delta_pos)
+        if delta_neg >= 0 or delta_pos <= 0:
+            raise ValueError(
+                "`delta_neg` must be negative and `delta_pos` positive.")
+        self.delta_neg = delta_neg
+        self.delta_pos = delta_pos
+
     @property
     def photon_density(self):
         """
@@ -478,7 +590,8 @@ class ThermalComptonScattering(xt.BeamElement):
             'dx', 'dpx', 'dy', 'dpy',
             'x_co', 'px_co', 'y_co', 'py_co', 'zeta_co', 'delta_co',
             'gemitt_x', 'gemitt_y', 'sigma_z', 'sigma_delta',
-            'n_macroparticles', 'n_trials', 'delta_threshold',
+            'n_macroparticles', 'n_trials',
+            'delta_neg', 'delta_pos', 'delta_threshold',
             'max_events_per_macro', 'enable_tail_veto', 'n_sigma_cut',
         }
         unknown = set(kwargs) - config_allowed
@@ -533,8 +646,11 @@ class ThermalComptonScattering(xt.BeamElement):
             _context = self._context
 
         cut = self.n_sigma_cut
+        # The longitudinal cutoff is tightened so that no macro-lepton is born
+        # outside the local momentum acceptance (see `n_sigma_cut_delta`).
+        cut_delta = self.n_sigma_cut_delta
 
-        def _normal(size):
+        def _normal(size, cut=cut):
             out = rng.standard_normal(size)
             if cut is not None:
                 bad = np.abs(out) > cut
@@ -543,7 +659,8 @@ class ThermalComptonScattering(xt.BeamElement):
                     bad = np.abs(out) > cut
             return out
 
-        n1, n2, n3, n4, n5, n6 = (_normal(n_macroparticles) for _ in range(6))
+        n1, n2, n3, n4, n5 = (_normal(n_macroparticles) for _ in range(5))
+        n6 = _normal(n_macroparticles, cut=cut_delta)
 
         delta = self.sigma_delta*n6
         zeta = self.sigma_z*n5
@@ -581,8 +698,8 @@ class ThermalComptonScattering(xt.BeamElement):
 
         A sample of macro-leptons is drawn from the local beam distribution
         (unless one is supplied), each is given :attr:`n_trials` scattering
-        trials, and the events whose relative momentum deviation changed by
-        more than :attr:`delta_threshold` are returned as an
+        trials, and the events ending up outside the local momentum acceptance
+        ``[delta_neg, delta_pos]`` are returned as an
         :class:`xtrack.Particles` object with absolute rate weights [1/s].
 
         Parameters
@@ -636,10 +753,17 @@ class ThermalComptonScattering(xt.BeamElement):
 
         max_events = self.max_events_per_macro
         if max_events is None:
-            # Generous default: the number of tail events per macro-particle is
-            # binomial with mean << n_trials; 32 + 10% of the trials is safe
-            # for any realistic threshold, and cheap in memory.
-            max_events = int(32 + 0.1*self.n_trials)
+            # Safe default: reserve one slot per trial, so that truncation is
+            # simply impossible, as long as the eight output arrays stay within
+            # a 256 MB budget.  ThermalComptonStudy normally overrides this
+            # with a much tighter (Poisson-safe) value obtained from its pilot
+            # run.
+            budget = 256e6
+            bytes_per_slot = 8*8  # eight float64 arrays
+            if n_macro*self.n_trials*bytes_per_slot <= budget:
+                max_events = int(self.n_trials)
+            else:
+                max_events = max(64, int(budget/(bytes_per_slot*n_macro)))
         max_events = max(1, int(max_events))
 
         n_out = n_macro*max_events
@@ -653,6 +777,7 @@ class ThermalComptonScattering(xt.BeamElement):
         weight_out = context.zeros(shape=(n_out,), dtype=np.float64)
         n_events_out = context.zeros(shape=(n_macro,), dtype=np.int64)
         n_dropped_out = context.zeros(shape=(n_macro,), dtype=np.int64)
+        n_outside_out = context.zeros(shape=(n_macro,), dtype=np.int64)
         rate_out = context.zeros(shape=(n_macro,), dtype=np.float64)
         eloss_out = context.zeros(shape=(n_macro,), dtype=np.float64)
 
@@ -664,6 +789,7 @@ class ThermalComptonScattering(xt.BeamElement):
                       weight_out=weight_out,
                       n_events_out=n_events_out,
                       n_dropped_out=n_dropped_out,
+                      n_outside_out=n_outside_out,
                       rate_scattering_out=rate_out,
                       energy_loss_rate_out=eloss_out,
                       weight_per_trial=self.weight_per_trial,
@@ -671,14 +797,15 @@ class ThermalComptonScattering(xt.BeamElement):
 
         n_events = context.nparray_from_context_array(n_events_out)
         n_dropped = int(np.sum(context.nparray_from_context_array(n_dropped_out)))
+        n_outside = int(np.sum(context.nparray_from_context_array(n_outside_out)))
 
         self.rate_scattering = float(np.sum(
             context.nparray_from_context_array(rate_out)))
         self.energy_loss_rate = float(np.sum(
             context.nparray_from_context_array(eloss_out)))
         self.n_dropped = n_dropped
+        self.n_outside_acceptance = n_outside
         if n_dropped > 0:
-            import warnings
             warnings.warn(
                 f"{n_dropped} events were dropped at element "
                 f"'{getattr(self, 'element_name', '?')}' "
@@ -686,6 +813,15 @@ class ThermalComptonScattering(xt.BeamElement):
                 f"backward-going leptons). The represented rate is truncated: "
                 f"increase `max_events_per_macro` or reduce `n_trials`.",
                 UserWarning, stacklevel=2)
+        if n_outside > 0:
+            warnings.warn(
+                f"{n_outside} macro-leptons of element "
+                f"'{getattr(self, 'element_name', '?')}' were drawn already "
+                f"outside the local momentum acceptance and were skipped. "
+                f"This should not happen with the built-in sampling (the "
+                f"longitudinal cutoff is reduced for that purpose): check "
+                f"`sigma_delta`, `delta_neg`/`delta_pos`, or the externally "
+                f"supplied macro-particles.", UserWarning, stacklevel=2)
 
         # Gather the (sparse) per-macro-particle slices
         mask = (np.arange(n_out) % max_events) < np.repeat(n_events, max_events)

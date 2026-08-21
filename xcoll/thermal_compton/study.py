@@ -36,6 +36,7 @@ class ThermalComptonResult:
     local_rates : xtrack.Table
         Per-element diagnostics table.  It always contains ``name``, ``s``,
         ``section_length``, ``section_rate``, ``rate_scattering``,
+        ``delta_neg``, ``delta_pos``, ``n_trials``, ``event_probability``,
         ``rate_tail``, ``energy_loss_rate``, ``num_particles`` and
         ``sum_weight``.  When tracking is enabled it additionally contains
         ``num_lost_particles`` and ``sum_lost_weight``.
@@ -47,7 +48,11 @@ class ThermalComptonResult:
         Compton scattering leads to a loss [s].  It is *not* the beam
         lifetime; compare with ``lifetime_tracking``.
     rate_tail : float
-        Rate carried by the generated (above threshold) macro-particles [1/s].
+        Rate carried by the generated macro-particles [1/s], i.e. the rate of
+        scattering events that push a lepton outside the local momentum
+        acceptance.  It is the loss rate that would be obtained if every such
+        particle were lost, and is therefore an upper bound on
+        ``rate_tracking``.
     rate_tracking : float or None
         Weighted loss rate obtained by tracking the generated particles [1/s].
         ``None`` when tracking is disabled.
@@ -95,8 +100,13 @@ class ThermalComptonStudy:
                  nemitt_x=None, nemitt_y=None,
                  gemitt_x=None, gemitt_y=None,
                  sigma_z=None, sigma_delta=None,
-                 n_macroparticles=1000, n_trials=100,
-                 delta_threshold=1e-3,
+                 local_momentum_acceptance=None,
+                 local_momentum_acceptance_scale=0.85,
+                 delta_threshold=None,
+                 n_macroparticles=500, n_trials=None,
+                 n_target_events=2000,
+                 n_trials_min=10, n_trials_max=200000,
+                 n_trials_pilot=200, n_macroparticles_pilot=None,
                  max_events_per_macro=None,
                  section_assignment='centered',
                  n_sigma_cut=5.0,
@@ -122,6 +132,14 @@ class ThermalComptonStudy:
         with :math:`N_{\\rm beam}` the number of stored particles, :math:`C`
         the circumference and :math:`n_\\gamma` the photon density.  Only the
         *distribution* of the losses depends on the optics.
+
+        What *does* vary strongly along the ring is the local momentum
+        acceptance, and hence the fraction of the scattering events that can
+        actually lead to a loss.  The study therefore selects the events
+        against the local momentum acceptance (as the xfields Touschek study
+        does) and sizes the Monte Carlo statistics element by element, so that
+        the tracked sample is neither dominated by particles that can never be
+        lost, nor starved where the acceptance is large.
 
         After construction, call :meth:`initialise` (done automatically by
         :meth:`run`) and then :meth:`run` to obtain a
@@ -161,17 +179,49 @@ class ThermalComptonStudy:
             RMS bunch length [m].
         sigma_delta : float
             RMS relative momentum spread.
+        local_momentum_acceptance : xtrack.Table or None
+            Local momentum acceptance (LMA) of the lattice, as returned by
+            ``line.get_local_momentum_acceptance(...)``: a table with ``s``,
+            ``delta_neg`` and ``delta_pos`` columns.  It is interpolated at
+            each scattering element and used to select the events: only the
+            scattered leptons ending up outside the local acceptance are
+            generated and tracked, since they are the only ones that can be
+            lost.  Mutually exclusive with ``delta_threshold``.
+        local_momentum_acceptance_scale : float, optional
+            Safety factor applied to ``delta_neg`` and ``delta_pos`` (default
+            0.85, as in the xfields Touschek study).  It must be smaller than
+            one so that the generated sample also covers the particles sitting
+            just inside the nominal acceptance, which may still be lost over
+            many turns.
+        delta_threshold : float, optional
+            Fallback for a flat, s-independent acceptance window
+            ``[-delta_threshold, +delta_threshold]``, for lines for which no
+            LMA is available.  Mutually exclusive with
+            ``local_momentum_acceptance``.
         n_macroparticles : int, optional
             Number of macro-leptons drawn from the local beam distribution at
             each scattering element.
-        n_trials : int, optional
-            Number of scattering trials per macro-lepton.
-        delta_threshold : float, optional
-            Thinning threshold on the change of the relative momentum
-            deviation.  Must be well below the ring momentum acceptance: it
-            controls the computational cost, not the physics.
+        n_trials : int or None, optional
+            Number of scattering trials per macro-lepton.  If ``None``
+            (default) it is determined automatically and *individually for each
+            element* by a cheap pilot run, so that every element generates
+            approximately ``n_target_events`` particles whatever its local
+            momentum acceptance.  This equalises the Monte Carlo statistics
+            around the ring and keeps the tracking cost under control.
+        n_target_events : int, optional
+            Target number of generated (trackable) particles per scattering
+            element, used by the automatic sizing.
+        n_trials_min, n_trials_max : int, optional
+            Bounds applied to the automatically determined number of trials.
+        n_trials_pilot : int, optional
+            Number of trials per macro-lepton used in the pilot run.
+        n_macroparticles_pilot : int or None, optional
+            Number of macro-leptons used in the pilot run.  Defaults to
+            ``min(n_macroparticles, 200)``.
         max_events_per_macro : int or None, optional
-            Capacity of the per-macro-particle output slice.
+            Capacity of the per-macro-particle output slice.  If ``None``
+            (default) it is derived from the pilot run with a wide Poisson
+            margin, so that no event can be truncated.
         section_assignment : {'centered', 'preceding'}, optional
             How the ring is partitioned among the scattering elements.
             ``'centered'`` (default) assigns to each element the section
@@ -183,8 +233,8 @@ class ThermalComptonStudy:
             Truncation of the Gaussian beam distribution used to draw the
             macro-leptons.
         enable_tail_veto : bool, optional
-            Enable the exact early veto of trials that cannot reach the
-            threshold.  Only affects speed, not the result.
+            Enable the exact early veto of the trials that cannot push a lepton
+            out of the local acceptance.  Only affects speed, not the result.
         seed : int or None, optional
             Seed of the random-number generators.  If ``None``, a seed is drawn
             with :mod:`numpy.random` when particles are generated.
@@ -224,8 +274,14 @@ class ThermalComptonStudy:
         self.sigma_z = float(sigma_z)
         self.sigma_delta = float(sigma_delta)
         self.n_macroparticles = int(n_macroparticles)
-        self.n_trials = int(n_trials)
-        self.delta_threshold = float(delta_threshold)
+        self.n_trials = None if n_trials is None else int(n_trials)
+        self.n_target_events = int(n_target_events)
+        self.n_trials_min = int(n_trials_min)
+        self.n_trials_max = int(n_trials_max)
+        self.n_trials_pilot = int(n_trials_pilot)
+        self.n_macroparticles_pilot = (min(int(n_macroparticles), 200)
+                                       if n_macroparticles_pilot is None
+                                       else int(n_macroparticles_pilot))
         self.max_events_per_macro = max_events_per_macro
         self.section_assignment = section_assignment
         self.n_sigma_cut = n_sigma_cut
@@ -233,12 +289,57 @@ class ThermalComptonStudy:
         self.seed = seed
         self.kwargs = kwargs
 
-        if self.n_trials < 1:
+        if self.n_trials is not None and self.n_trials < 1:
             raise ValueError("`n_trials` must be at least 1.")
         if self.n_macroparticles < 1:
             raise ValueError("`n_macroparticles` must be at least 1.")
-        if self.delta_threshold < 0:
-            raise ValueError("`delta_threshold` must be non-negative.")
+
+        # Local momentum acceptance
+        if (local_momentum_acceptance is None) == (delta_threshold is None):
+            raise ValueError(
+                "Provide exactly one of `local_momentum_acceptance` (an "
+                "`xt.Table` from `line.get_local_momentum_acceptance()`) or "
+                "`delta_threshold` (a flat acceptance window).")
+        if not 0 < local_momentum_acceptance_scale <= 1:
+            raise ValueError(
+                "`local_momentum_acceptance_scale` must be in (0, 1].")
+        self.local_momentum_acceptance_scale = float(
+            local_momentum_acceptance_scale)
+        self.delta_threshold = (None if delta_threshold is None
+                                else float(delta_threshold))
+        if self.delta_threshold is not None and self.delta_threshold <= 0:
+            raise ValueError("`delta_threshold` must be positive.")
+        self.local_momentum_acceptance = local_momentum_acceptance
+        if local_momentum_acceptance is not None:
+            lma = local_momentum_acceptance
+            required = {"s", "delta_neg", "delta_pos"}
+            missing = required - set(getattr(lma, "_col_names", []))
+            if missing:
+                raise ValueError("`local_momentum_acceptance` is missing the "
+                                 f"columns {sorted(missing)}.")
+            # The table of the user is never modified: the scaled acceptance is
+            # stored separately.
+            self._lma_s = np.asarray(lma.s, dtype=float)
+            self._lma_neg = (self.local_momentum_acceptance_scale
+                             * np.asarray(lma.delta_neg, dtype=float))
+            self._lma_pos = (self.local_momentum_acceptance_scale
+                             * np.asarray(lma.delta_pos, dtype=float))
+            for name, vals in (('delta_neg', self._lma_neg),
+                               ('delta_pos', self._lma_pos)):
+                if not np.all(np.isfinite(vals)):
+                    raise ValueError(f"`{name}` contains non-finite values.")
+            if np.any(self._lma_neg >= 0) or np.any(self._lma_pos <= 0):
+                raise ValueError(
+                    "`delta_neg` must be negative and `delta_pos` positive "
+                    "everywhere in `local_momentum_acceptance`.")
+            order = np.argsort(self._lma_s)
+            self._lma_s = self._lma_s[order]
+            self._lma_neg = self._lma_neg[order]
+            self._lma_pos = self._lma_pos[order]
+        else:
+            self._lma_s = None
+            self._lma_neg = None
+            self._lma_pos = None
 
         mass0 = float(line.particle_ref.mass0)
         if abs(mass0 - xt.ELECTRON_MASS_EV)/xt.ELECTRON_MASS_EV > 1e-6:
@@ -298,6 +399,7 @@ class ThermalComptonStudy:
         self.mean_photon_energy = blackbody_mean_photon_energy(self.temperature)
 
         self._initialised = False
+        self._event_probability = {}
 
     ############################################################
     # Helpers
@@ -371,6 +473,32 @@ class ThermalComptonStudy:
             lengths = 0.5*(gaps + np.roll(gaps, 1))
         return lengths
 
+    def momentum_acceptance_at(self, s):
+        """
+        Local momentum acceptance used by the study at a given position.
+
+        The table supplied at construction is interpolated linearly and scaled
+        by ``local_momentum_acceptance_scale``.  When a flat
+        ``delta_threshold`` was given instead, the same window is returned
+        everywhere.
+
+        Parameters
+        ----------
+        s : float or array_like
+            Longitudinal position(s) [m].
+
+        Returns
+        -------
+        delta_neg, delta_pos : float or numpy.ndarray
+            Scaled negative and positive momentum acceptance.
+        """
+        if self._lma_s is None:
+            thr = self.delta_threshold
+            return -thr*np.ones_like(np.asarray(s, dtype=float)), \
+                thr*np.ones_like(np.asarray(s, dtype=float))
+        return (np.interp(s, self._lma_s, self._lma_neg),
+                np.interp(s, self._lma_s, self._lma_pos))
+
     ############################################################
     # Configuration
     ############################################################
@@ -382,10 +510,16 @@ class ThermalComptonStudy:
 
         1. assigns the section of the ring it represents,
         2. computes the absolute trial rate of that section,
-        3. stores the local optics, closed orbit and beam parameters on the
+        3. interpolates the local momentum acceptance, which defines the
+           events worth generating and tracking,
+        4. stores the local optics, closed orbit and beam parameters on the
            element, so that :meth:`ThermalComptonScattering.scatter` can draw
            the local beam distribution and weight the generated
-           macro-particles correctly.
+           macro-particles correctly,
+        5. unless ``n_trials`` was given explicitly, runs a cheap pilot to
+           measure the local probability that a scattering event leaves the
+           acceptance, and sizes ``n_trials`` and the output capacity of each
+           element accordingly (see :meth:`size_statistics`).
 
         Parameters
         ----------
@@ -415,7 +549,19 @@ class ThermalComptonStudy:
         rate_per_length = (self.n_particles/self.circumference
                            * C_LIGHT*self.photon_density*THOMSON_CROSS_SECTION)
 
-        for nn, ss, ll in zip(self.elements, s_all, lengths):
+        if self._lma_s is not None:
+            if (s_all.min() < self._lma_s.min() - 1e-9
+                    or s_all.max() > self._lma_s.max() + 1e-9):
+                warnings.warn(
+                    "Some scattering elements lie outside the s-range of "
+                    "`local_momentum_acceptance`: the acceptance is clamped "
+                    "to the closest tabulated value there.",
+                    UserWarning, stacklevel=2)
+        delta_neg_all, delta_pos_all = self.momentum_acceptance_at(s_all)
+
+        for nn, ss, ll, dneg, dpos in zip(self.elements, s_all, lengths,
+                                          np.atleast_1d(delta_neg_all),
+                                          np.atleast_1d(delta_pos_all)):
             elem = line[nn]
             elem.element_name = nn
             elem._configure(
@@ -435,14 +581,146 @@ class ThermalComptonStudy:
                 gemitt_x=self.gemitt_x, gemitt_y=self.gemitt_y,
                 sigma_z=self.sigma_z, sigma_delta=self.sigma_delta,
                 n_macroparticles=self.n_macroparticles,
-                n_trials=self.n_trials,
-                delta_threshold=self.delta_threshold,
+                n_trials=(self.n_trials if self.n_trials is not None
+                          else self.n_trials_pilot),
+                delta_neg=float(dneg),
+                delta_pos=float(dpos),
                 max_events_per_macro=self.max_events_per_macro,
                 enable_tail_veto=self.enable_tail_veto,
                 n_sigma_cut=self.n_sigma_cut,
             )
+            if (self.n_sigma_cut is not None
+                    and elem.n_sigma_cut_delta < self.n_sigma_cut - 1e-9):
+                warnings.warn(
+                    f"Longitudinal sampling cutoff reduced at element '{nn}' "
+                    f"(s = {ss:.2f} m): {elem.n_sigma_cut_delta:.2f} sigma "
+                    f"instead of {self.n_sigma_cut:.2f}, so that no "
+                    f"macro-lepton is drawn outside the local momentum "
+                    f"acceptance ({dneg*100:.3f}%, {dpos*100:.3f}%).",
+                    UserWarning, stacklevel=2)
 
         self._initialised = True
+
+        if self.n_trials is None:
+            self.size_statistics()
+
+    def size_statistics(self, seed=None):
+        """
+        Size the Monte Carlo statistics element by element.
+
+        The probability that a single scattering trial produces a lepton
+        outside the local momentum acceptance varies strongly along the ring
+        (it depends on the local acceptance, which can change by an order of
+        magnitude between a dispersion-free straight and an arc).  A fixed
+        number of trials would therefore give very uneven statistics, generate
+        far too many particles where the acceptance is small, and far too few
+        where it is large.
+
+        This method runs a cheap pilot generation at every element, measures
+        the per-trial probability :math:`p` of producing a trackable event,
+        and sets
+
+        .. math::
+            n_{\\rm trials} = \\frac{n_{\\rm target}}
+                                    {n_{\\rm macro}\\, p} ,
+
+        clipped to ``[n_trials_min, n_trials_max]``, so that each element
+        generates about ``n_target_events`` particles.  The output capacity of
+        each element is set to a wide Poisson upper bound on the resulting
+        multiplicity, which makes truncation impossible.
+
+        The absolute normalisation is unaffected: the section rate is shared
+        among ``n_macroparticles * n_trials`` trials, so a different number of
+        trials only redistributes the same total weight over a different number
+        of macro-particles.
+
+        Parameters
+        ----------
+        seed : int or None, optional
+            Seed of the pilot run.  Defaults to the seed of the study (offset
+            so that the pilot and the production samples are independent).
+
+        Returns
+        -------
+        None
+        """
+        if not self._initialised:
+            self.initialise()
+            return   # initialise() calls this method at the end
+
+        if seed is None:
+            seed = self.seed if self.seed is not None else 12345
+        seed = int(seed) + 987654
+
+        n_pilot = max(1, min(self.n_macroparticles_pilot,
+                             self.n_macroparticles))
+
+        for ii, nn in enumerate(self.elements):
+            elem = self.line[nn]
+            n_trials_pilot = self.n_trials_pilot
+            p = 0.0
+            # Escalate the pilot if the process is very rare locally.
+            for _ in range(4):
+                elem._configure(n_trials=n_trials_pilot,
+                                max_events_per_macro=None)
+                part = elem.scatter(n_macroparticles=n_pilot,
+                                    seed=seed + ii)
+                n_events = int(np.sum(part.state > -1e5))
+                if n_events > 0:
+                    p = n_events/float(n_pilot*n_trials_pilot)
+                    break
+                n_trials_pilot *= 8
+
+            if p == 0.0:
+                warnings.warn(
+                    f"No thermal Compton event could reach the local momentum "
+                    f"acceptance at element '{nn}' in "
+                    f"{n_pilot*n_trials_pilot} pilot trials: this section "
+                    f"contributes (almost) nothing to the losses. The maximum "
+                    f"momentum deviation reachable is about "
+                    f"{4*float(self.particle_ref.gamma0[0])**2*self.mean_photon_energy/float(self.particle_ref.p0c[0]):.2e}, "
+                    f"to be compared with the local acceptance "
+                    f"({elem.delta_neg*100:.3f}%, {elem.delta_pos*100:.3f}%).",
+                    UserWarning, stacklevel=2)
+                n_trials = self.n_trials_min
+                lam = 1.0
+            else:
+                n_trials = int(np.ceil(self.n_target_events
+                                       / (self.n_macroparticles*p)))
+                n_trials = int(np.clip(n_trials, self.n_trials_min,
+                                       self.n_trials_max))
+                lam = n_trials*p        # expected events per macro-particle
+
+            capacity = self.max_events_per_macro
+            if capacity is None:
+                # Poisson upper bound with a very wide margin (~8 sigma + 16)
+                capacity = int(min(n_trials,
+                                   max(8, np.ceil(lam + 8*np.sqrt(lam) + 16))))
+            self._event_probability[nn] = p
+            elem._configure(n_trials=n_trials,
+                            n_macroparticles=self.n_macroparticles,
+                            max_events_per_macro=int(capacity))
+            # The pilot diagnostics must not leak into the results
+            elem.rate_scattering = 0.0
+            elem.rate_tail = 0.0
+            elem.energy_loss_rate = 0.0
+            elem.n_dropped = 0
+
+    @property
+    def event_probability(self):
+        """
+        Per-trial probability of generating a trackable event, per element.
+
+        Measured by the pilot run of :meth:`size_statistics`.  It is the
+        fraction of thermal Compton scatterings that push a lepton outside the
+        local momentum acceptance, i.e. the local "loss-candidate" fraction.
+
+        Returns
+        -------
+        event_probability : dict
+            Mapping ``{element_name: probability}``.
+        """
+        return dict(self._event_probability)
 
     ############################################################
     # Analytic cross-checks
@@ -595,7 +873,6 @@ class ThermalComptonStudy:
         particles_by_element = {}
         merged_particles = None
         lost_particles = None
-        delta_generated = {}
 
         seed = self.seed
         if seed is None:
@@ -604,9 +881,6 @@ class ThermalComptonStudy:
         if generate_particles or track:
             for ii, nn in enumerate(self.elements):
                 particles = self.line[nn].scatter(seed=seed + ii)
-                # Indexed by particle_id: tracking reorganises the array but
-                # preserves the particle ids.
-                delta_generated[nn] = particles.delta.copy()
                 if track:
                     self.line.track(particles,
                                     ele_start=nn, ele_stop=nn,
@@ -616,8 +890,12 @@ class ThermalComptonStudy:
             merged_particles = xt.Particles.merge(
                 list(particles_by_element.values()))
 
-        rate_scattering = float(sum(self.line[nn].rate_scattering
-                                    for nn in self.elements))
+        if generate_particles or track:
+            rate_scattering = float(sum(self.line[nn].rate_scattering
+                                        for nn in self.elements))
+        else:
+            # Nothing was generated: report the analytic interaction rate
+            rate_scattering = float(self.analytic_rate())
         rate_tail = float(sum(self.line[nn].rate_tail
                               for nn in self.elements))
         energy_loss_rate = float(sum(self.line[nn].energy_loss_rate
@@ -630,7 +908,7 @@ class ThermalComptonStudy:
             rate_tracking = float(np.sum(lost_particles.weight))
             lifetime_tracking = (np.inf if rate_tracking == 0
                                  else float(self.n_particles/rate_tracking))
-            self._check_threshold(particles_by_element, delta_generated)
+            self._check_acceptance_window(particles_by_element)
 
         lifetime_scattering = (np.inf if rate_scattering == 0
                                else float(self.n_particles/rate_scattering))
@@ -661,48 +939,61 @@ class ThermalComptonStudy:
             tracked=track,
         )
 
-    def _check_threshold(self, particles_by_element, delta_generated,
-                         margin=1.5):
+    def _check_acceptance_window(self, particles_by_element,
+                                 upper=0.995, lower=0.02):
         """
-        Warn if the thinning threshold is too close to the momentum acceptance.
+        Sanity-check the momentum acceptance window against the tracking.
 
-        The loss rate is only complete if *every* particle able to be lost has
-        been retained by the ``delta_threshold`` cut.  This is checked a
-        posteriori by looking at the smallest generated ``|delta|`` among the
-        lost particles: if losses occur just above the threshold, particles
-        below it would have been lost too and the loss rate is underestimated.
+        Only the leptons falling outside the *scaled* local momentum acceptance
+        are generated, so the loss rate is complete only if the particles just
+        *inside* that window would indeed have survived.  Two symptoms are
+        checked:
+
+        * if essentially every generated particle is lost, the window is too
+          tight and losses are being missed below it: reduce
+          ``local_momentum_acceptance_scale`` (or the LMA itself);
+        * if almost none is lost, the acceptance is far more pessimistic than
+          the tracking, and the computing time is being wasted on particles
+          that survive (or ``n_turns`` is too small).
 
         Parameters
         ----------
         particles_by_element : dict
             Tracked particles for each element.
-        delta_generated : dict
-            Relative momentum deviations at generation for each element.
-        margin : float, optional
-            Factor by which the smallest lost ``|delta|`` should exceed the
-            threshold.
+        upper, lower : float, optional
+            Bounds on the lost weight fraction that trigger the warnings.
 
         Returns
         -------
         None
         """
-        thr = self.delta_threshold
-        if thr <= 0:
+        total = 0.0
+        lost = 0.0
+        for part in particles_by_element.values():
+            alive_slots = part.state > -1e5
+            total += float(np.sum(part.weight[alive_slots]))
+            lost += float(np.sum(part.weight[part.state == 0]))
+        if total <= 0:
             return
-        min_lost = np.inf
-        for nn, part in particles_by_element.items():
-            lost = part.state == 0
-            if not np.any(lost):
-                continue
-            pid = np.asarray(part.particle_id[lost], dtype=np.int64)
-            min_lost = min(min_lost,
-                           float(np.min(np.abs(delta_generated[nn][pid]))))
-        if np.isfinite(min_lost) and min_lost < margin*thr:
+        frac = lost/total
+        self.lost_fraction = frac
+        if frac > upper:
             warnings.warn(
-                f"Particles are lost with |delta| as small as {min_lost:.2e} "
-                f"at generation, close to the thinning threshold "
-                f"{thr:.2e}. The loss rate is likely underestimated: reduce "
-                f"`delta_threshold`.", UserWarning, stacklevel=3)
+                f"{100*frac:.2f}% of the generated weight is lost during "
+                f"tracking. The selection window is probably too tight: "
+                f"particles just inside the local momentum acceptance would "
+                f"also be lost but were never generated, so the loss rate is "
+                f"underestimated. Reduce "
+                f"`local_momentum_acceptance_scale` (currently "
+                f"{self.local_momentum_acceptance_scale}).",
+                UserWarning, stacklevel=3)
+        elif frac < lower:
+            warnings.warn(
+                f"Only {100*frac:.2f}% of the generated weight is lost during "
+                f"tracking: the local momentum acceptance is much more "
+                f"pessimistic than the tracking (or `n_turns` is too small), "
+                f"and most of the computing time is spent on particles that "
+                f"survive.", UserWarning, stacklevel=3)
 
     def local_rates(self, *, particles_by_element=None,
                     include_tracking=False):
@@ -725,6 +1016,8 @@ class ThermalComptonStudy:
             Per-element diagnostics table.
         """
         data = {"name": [], "s": [], "section_length": [], "section_rate": [],
+                "delta_neg": [], "delta_pos": [], "n_trials": [],
+                "event_probability": [],
                 "rate_scattering": [], "rate_tail": [], "energy_loss_rate": []}
         include_particles = particles_by_element is not None
         if include_particles:
@@ -738,6 +1031,11 @@ class ThermalComptonStudy:
             data["s"].append(float(getattr(elem, "s", np.nan)))
             data["section_length"].append(float(elem.section_length))
             data["section_rate"].append(float(elem.section_rate))
+            data["delta_neg"].append(float(elem.delta_neg))
+            data["delta_pos"].append(float(elem.delta_pos))
+            data["n_trials"].append(int(elem.n_trials))
+            data["event_probability"].append(
+                float(self._event_probability.get(nn, np.nan)))
             data["rate_scattering"].append(float(elem.rate_scattering))
             data["rate_tail"].append(float(elem.rate_tail))
             data["energy_loss_rate"].append(float(elem.energy_loss_rate))
@@ -749,8 +1047,13 @@ class ThermalComptonStudy:
                     data["num_particles"].append(0)
                     data["sum_weight"].append(np.nan)
                 else:
-                    data["num_particles"].append(int(len(particles.x)))
-                    data["sum_weight"].append(float(np.sum(particles.weight)))
+                    # `particles.x` spans the full capacity: count the
+                    # allocated slots only (unallocated ones carry
+                    # state = -999999999).
+                    allocated = particles.state > -999999999
+                    data["num_particles"].append(int(np.sum(allocated)))
+                    data["sum_weight"].append(
+                        float(np.sum(particles.weight[allocated])))
             if include_tracking:
                 if particles is None:
                     data["num_lost_particles"].append(0)

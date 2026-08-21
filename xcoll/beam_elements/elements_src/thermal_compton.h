@@ -54,14 +54,17 @@
  *     without any truncation of the series (the mixture index is drawn by
  *     walking the 1/n^3 series, ~1.2 iterations on average) and the Gamma(3)
  *     variate is built from three exponentials.
- *  4. An *exact* early veto rejects, before any angular sampling or boost, the
- *     trials that cannot possibly produce a momentum deviation above the
- *     requested threshold (the maximum reachable laboratory energy transfer is
- *     bounded by k + gamma*(1+beta)*k_star).  No event is lost by this veto.
- *  5. The kernel is written as an xobjects per-particle kernel, i.e. the
+ *  4. Events are selected against the *local momentum acceptance* (LMA) of the
+ *     lattice: a scattered lepton is retained only if its resulting delta falls
+ *     outside [delta_neg, delta_pos].
+ *  5. An *exact* early veto rejects, before any angular sampling or boost, the
+ *     trials that cannot possibly push the lepton out of the acceptance window
+ *     (the maximum reachable laboratory momentum transfer is bounded by
+ *     k + gamma*(1+beta)*k_star).  No event is lost by this veto.
+ *  6. The kernel is written as an xobjects per-particle kernel, i.e. the
  *     macro-particles of the local beam distribution are processed in parallel
  *     (OpenMP / GPU) with independent RNG streams.
- *  6. Xsuite coordinates are used throughout (px = Px/p0c, py = Py/p0c,
+ *  7. Xsuite coordinates are used throughout (px = Px/p0c, py = Py/p0c,
  *     delta = (p - p0)/p0), not the slopes x' = Px/Pz used in the reference.
  *
  *  Units
@@ -217,7 +220,7 @@ double xc_kn_over_thomson(double a, double costheta, double* x_out){
 double xc_sigma_kn_over_sigma_t_small(double a){
     /* Small-a expansion of sigma_KN/sigma_T, error O(a^3).  Only used for the
      * (very soft) trials removed by the exact tail veto, for which
-     * a < delta_threshold/2, i.e. the expansion is accurate to ~1e-7. */
+     * a < (acceptance window)/2, i.e. the expansion is accurate to ~1e-7. */
     return 1. - 2.*a + 5.2*a*a;
 }
 
@@ -236,9 +239,9 @@ void ThermalComptonScattering_track_local_particle(
 /*
  * Per-particle kernel.  Each "particle" of `part0` is one macro-lepton of the
  * local beam distribution; it is given `n_trials` independent scattering trials
- * representing the section length, and writes the accepted *tail* events
- * (|delta| >= delta_threshold) into its own slice of the output arrays
- * [islot*max_events, (islot+1)*max_events).
+ * representing the section length, and writes the events falling outside the
+ * local momentum acceptance (delta < delta_neg or delta > delta_pos) into its
+ * own slice of the output arrays [islot*max_events, (islot+1)*max_events).
  */
 void ThermalComptonScatter(ThermalComptonScatteringData el,
                            LocalParticle* part0,
@@ -252,6 +255,7 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
                            /*gpuglmem*/ double* weight_out,
                            /*gpuglmem*/ int64_t* n_events_out,
                            /*gpuglmem*/ int64_t* n_dropped_out,
+                           /*gpuglmem*/ int64_t* n_outside_out,
                            /*gpuglmem*/ double* rate_scattering_out,
                            /*gpuglmem*/ double* energy_loss_rate_out,
                            double weight_per_trial,
@@ -260,7 +264,8 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
     double  const p0c             = ThermalComptonScatteringData_get_p0c(el);
     double  const mass0           = ThermalComptonScatteringData_get_mass0(el);
     double  const temperature     = ThermalComptonScatteringData_get_temperature(el);
-    double  const delta_threshold = ThermalComptonScatteringData_get_delta_threshold(el);
+    double  const delta_neg       = ThermalComptonScatteringData_get_delta_neg(el);
+    double  const delta_pos       = ThermalComptonScatteringData_get_delta_pos(el);
     int64_t const n_trials        = ThermalComptonScatteringData_get_n_trials(el);
     int64_t const tail_veto       = ThermalComptonScatteringData_get_enable_tail_veto(el);
 
@@ -295,9 +300,22 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
          * the outgoing photon energy cannot exceed gamma (1+beta) k_star, and
          * the momentum change cannot exceed k + that bound. */
         double const boost_max = gamma*(1. + beta);
-        /* Selection is |delta_out - delta_in| = |Delta p|/p0c >= threshold, so
-         * the veto must use p0c (never p_in) to stay strictly conservative. */
-        double const p_threshold = delta_threshold*p0c;
+        /* Momentum transfer needed to push this lepton out of the local
+         * momentum acceptance window.  The selection is on the *absolute*
+         * outgoing delta, so the distances are measured from the incoming
+         * delta and expressed in momentum with p0c (never p_in), which keeps
+         * the veto below strictly conservative. */
+        double const dp_needed_neg = (delta - delta_neg)*p0c;
+        double const dp_needed_pos = (delta_pos - delta)*p0c;
+        double const p_required = fmin(dp_needed_neg, dp_needed_pos);
+
+        /* A lepton drawn already outside the acceptance would be selected (and
+         * weighted) without any physical scattering.  The longitudinal
+         * sampling cutoff is reduced by the Python layer to make this
+         * impossible; the case is only flagged here (and its trials skipped)
+         * for safety.  No `continue` is used inside the per-particle block. */
+        int64_t const outside_window = (p_required <= 0.) ? 1 : 0;
+        int64_t const n_trials_eff = outside_window ? 0 : n_trials;
 
         /* Fixed triad around the lepton direction (constant over the trials). */
         double u1[3], u2[3];
@@ -308,7 +326,7 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
         double  rate_all  = 0.;
         double  eloss     = 0.;
 
-        for (int64_t it = 0; it < n_trials; it++){
+        for (int64_t it = 0; it < n_trials_eff; it++){
 
             /* ---- thermal photon in the laboratory frame ------------------ */
             double const k = xc_blackbody_photon_energy(part, kT);
@@ -328,7 +346,7 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
             double const a = kstar/mass0;
 
             /* ---- exact veto of the trials that cannot reach the tail ----- */
-            if (tail_veto && (k + boost_max*kstar < p_threshold)){
+            if (tail_veto && (k + boost_max*kstar < p_required)){
                 /* Such a trial would be accepted by Klein-Nishina with
                  * probability sigma_KN/sigma_T(a) and would never enter the
                  * tail sample: account for its (soft) contribution to the
@@ -398,7 +416,9 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
             double const p_out = sqrt(POW2(Px) + POW2(Py) + POW2(Pz));
             double const delta_new = p_out/p0c - 1.;
 
-            if (fabs(delta_new - delta) < delta_threshold) continue;
+            /* Keep only the leptons that end up outside the local momentum
+             * acceptance, i.e. the candidates for a loss. */
+            if (delta_new > delta_neg && delta_new < delta_pos) continue;
 
             if (n_events >= max_events){
                 n_dropped++;
@@ -419,6 +439,7 @@ void ThermalComptonScatter(ThermalComptonScatteringData el,
 
         n_events_out[islot]         = n_events;
         n_dropped_out[islot]        = n_dropped;
+        n_outside_out[islot]        = outside_window;
         rate_scattering_out[islot]  = rate_all;
         energy_loss_rate_out[islot] = eloss;
 
