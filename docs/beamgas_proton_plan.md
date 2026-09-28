@@ -199,7 +199,7 @@ Run with `cd tests && python -m pytest test_beamgas*.py`.
 | `test_beamgas.py` | existing e± tests, unmodified | 90 passed |
 | `test_beamgas_regression.py` | e± results frozen before any change (brems, e⁻ and e⁺ Coulomb: xsecs, generated samples, tracked states, rates, cutoff scans; rtol 1e-12, states exact) | 3 passed |
 | `test_beamgas_proton_physics.py` | ports vs Geant4 reference values, sampled distributions, kinematics | 51 passed |
-| `test_beamgas_proton_study.py` | dispatch, validation, rates, stratified weights, lifetime, out-of-bucket | 26 passed |
+| `test_beamgas_proton_study.py` | dispatch, validation, rates, stratified weights, lifetime, out-of-bucket, reproducibility | 27 passed |
 
 **Proton physics unit tests: agreement with the Geant4 reference values.**
 
@@ -332,34 +332,34 @@ Everest collimators (`machines/lhc_run3_b1.json`, `colldbs/lhc_run3.yaml`).
 - **Outputs:** process-rate table, lifetime, loss map (absorption in gas,
   collimators, aperture), and the absorption source CSV.
 
-**Results** (28-core CPU, **3 min 36 s** for both cases, including ~60 s of
-machine setup and kernel compilation). Rates are for the 100 m section only
-(bunch of 1.4·10¹¹); lifetimes are ~5000 h.
+**Results** (28-core CPU, **3.5 min** for both cases, including ~60 s of
+machine setup and kernel compilation; reproducible with the seed). Rates are
+for the 100 m section only (bunch of 1.4·10¹¹); lifetimes are ~5000 h.
 
 | uniform gas | interaction rate [1/s] | loss rate [1/s] | lost fraction |
 |---|---|---|---|
 | absorption | 5395 | 5395 (exact) | 1 |
-| elastic (θ ≥ 0.1 µrad) | 4.66·10⁵ | 1449 ± 111 | 0.3% |
-| quasi-elastic | 558 | 502 ± 4 | 90% |
-| diffractive | 459 | 447 ± 2 | 97% |
-| knock-on (T ≥ 10⁻⁶ E) | 5548 | 27 ± 2 | 0.5% |
-| **total** | 4.78·10⁵ | **7820 ± 110** | τ = 4973 ± 71 h |
+| elastic (θ ≥ 0.1 µrad) | 4.66·10⁵ | 1281 ± 113 | 0.3% |
+| quasi-elastic | 558 | 509 ± 4 | 91% |
+| diffractive | 459 | 449 ± 2 | 98% |
+| knock-on (T ≥ 10⁻⁶ E) | 5548 | 29 ± 3 | 0.5% |
+| **total** | 4.78·10⁵ | **7663 ± 110** | τ = 5075 ± 75 h |
 
 Where the loss rate goes:
 
-- 69% absorbed in the gas section;
-- about 27% on the IR7 collimators (TCP.C/D/B6L7 8.3/7.7/2.7%, then the
+- 70% absorbed in the gas section;
+- about 25% on the IR7 collimators (TCP.D/C/B6L7 10.1/7.4/2.4%, then the
   TCSGs);
-- 2.9% on the aperture, mostly in the arc right downstream (large-ξ
+- 3.0% on the aperture, mostly in the arc right downstream (large-ξ
   diffraction) and in the IR7 dispersion suppressor;
-- a small contribution in IR3 from the protons pushed out of the RF bucket
-  and drifted to the momentum cleaning.
+- ~10⁻³ in IR3 from the protons pushed out of the RF bucket and drifted to
+  the momentum cleaning.
 
 No out-of-bucket protons remain after the drift. The elastic rate above
 50 mrad is negligible (10⁻¹⁹ 1/s).
 
-The profile case (CO/CO₂ bump) gives 8900 ± 150 1/s and τ = 4370 ± 75 h,
-with 71% absorbed in the gas, a loss peak at the bump, and the same
+The profile case (CO/CO₂ bump) gives 9160 ± 210 1/s and τ = 4245 ± 96 h,
+with 69% absorbed in the gas, a loss peak at the bump, and the same
 downstream pattern. The absorbed protons are written to
 `beamgas_absorption_events_<case>.csv` (s, coordinates, momentum, gas, Z,
 A, weight), ready to be turned into a FLUKA source. The plot is
@@ -377,8 +377,11 @@ A, weight), ready to be turned into a FLUKA source. The plot is
    report/drift, per-process results, molecular densities.
 4. `5bf42cd0` Geant4 thin-target benchmark, and the SD calibration
    (`sd_scale = 0.65`, per-species override).
-5. LHC example (`examples/beamgas_proton_lhc.py`), its synthetic pressure
-   profile, and this document updated to what was done.
+5. `8a4b9c63` LHC example (`examples/beamgas_proton_lhc.py`), its synthetic
+   pressure profile, and this document updated to what was done.
+6. `dfafee8e` Per-particle random generators (used by the Everest
+   collimators) seeded from the study, for reproducibility with collimators.
+7. Updated example results in this document.
 
 ---
 
