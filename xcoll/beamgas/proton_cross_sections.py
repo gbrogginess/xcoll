@@ -128,6 +128,14 @@ ELASTIC_VARIANTS = ('elastic', 'nuclear_elastic', 'coulomb')
 ALL_PROTON_PROCESSES = ('absorption', 'elastic', 'quasi_elastic',
                         'diffractive', 'knock_on')
 
+# Default scale factor of the Everest/K2 single-diffraction cross section.
+# The K2 value, 4.3 + 0.3 log(s) mb per nucleon, follows the two-arm single
+# diffraction; the target dissociation alone is ~0.65 of it, as found by
+# comparing with the leading-proton spectrum of Geant4 11.4.2 (FTF) on
+# hydrogen at 450 GeV and 6.8 TeV (examples/beamgas_geant4_benchmark), which
+# also reproduces the energy dependence of the K2 formula.
+DEFAULT_SD_SCALE = 0.65
+
 # Gauss-Legendre nodes used for the integrals in log(t) or log(T), per decade
 _GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(32)
 
@@ -1168,14 +1176,16 @@ class ProtonAbsorptionCalculator(_ProtonCalculatorBase):
         Reference momentum [eV].
     sd_scale : float, optional
         Scale factor of the single-diffraction cross section, see
-        :class:`ProtonDiffractionCalculator`.
+        :class:`ProtonDiffractionCalculator`. Default
+        :data:`DEFAULT_SD_SCALE`.
     cross_sections : ProtonNucleusCrossSections, optional
         Shared cross sections of this species.
     """
 
     process = 'absorption'
 
-    def __init__(self, Z, p0c, sd_scale=1.0, cross_sections=None):
+    def __init__(self, Z, p0c, sd_scale=DEFAULT_SD_SCALE,
+                 cross_sections=None):
         super().__init__(Z, p0c, cross_sections)
         self.sd_scale = float(sd_scale)
         sigma_sd = ProtonDiffractionCalculator(
@@ -1521,8 +1531,12 @@ class ProtonDiffractionCalculator(_ProtonCalculatorBase):
         Reference momentum [eV].
     sd_scale : float, optional
         Scale factor of the cross section. The Everest normalisation follows
-        the two-arm single-diffractive data, so a value around 0.5 may be
-        appropriate for the target dissociation alone.
+        the two-arm single-diffractive cross section; the default,
+        :data:`DEFAULT_SD_SCALE` = 0.65, reproduces the leading-proton
+        spectrum of Geant4 (FTF) on hydrogen at 450 GeV and 6.8 TeV. On
+        nuclei FTF predicts far fewer surviving protons (see the benchmark in
+        ``examples/beamgas_geant4_benchmark``), so the value for nuclear
+        targets is uncertain by a factor of a few.
     xi_max : float, optional
         Maximum ``M^2/s``. Default 0.15.
     cross_sections : ProtonNucleusCrossSections, optional
@@ -1533,7 +1547,7 @@ class ProtonDiffractionCalculator(_ProtonCalculatorBase):
 
     _M2_MIN = (0.93827208816 + 0.13957039)**2   # GeV^2, (m_p + m_pi+)^2
 
-    def __init__(self, Z, p0c, sd_scale=1.0, xi_max=0.15,
+    def __init__(self, Z, p0c, sd_scale=DEFAULT_SD_SCALE, xi_max=0.15,
                  cross_sections=None):
         super().__init__(Z, p0c, cross_sections)
         self.sd_scale = float(sd_scale)

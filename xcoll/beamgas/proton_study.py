@@ -16,6 +16,7 @@ from .study import (BeamGasStudy, BeamGasResult, PDG_ID_PROTON,
                     _allocated_mask, _lost_mask, _cutoff_scan_table)
 from .proton_cross_sections import (
     PROTON_PROCESSES, ELASTIC_VARIANTS, ALL_PROTON_PROCESSES, MILLIBARN,
+    DEFAULT_SD_SCALE,
     ProtonNucleusCrossSections, ProtonAbsorptionCalculator,
     ProtonElasticCalculator, ProtonQuasiElasticCalculator,
     ProtonDiffractionCalculator, ProtonKnockOnCalculator)
@@ -87,7 +88,7 @@ class ProtonBeamGasStudy(BeamGasStudy):
                  n_scattering_events=None,
                  coulomb_theta=(1e-7, 50e-3),
                  interference=True,
-                 sd_scale=1.0,
+                 sd_scale=DEFAULT_SD_SCALE,
                  knock_on_cut=1e-6,
                  seed=None, brems_energy_cut=None, **kwargs):
         """
@@ -132,11 +133,13 @@ class ProtonBeamGasStudy(BeamGasStudy):
         interference : bool, optional
             Include the Coulomb-nuclear interference in the elastic channel.
             Default ``True``.
-        sd_scale : float, optional
+        sd_scale : float or dict, optional
             Scale factor of the single-diffraction cross section, see
-            :class:`xcoll.beamgas.ProtonDiffractionCalculator`. The
-            absorption cross section is reduced accordingly, so that the
-            inelastic cross section is unchanged. Default 1.
+            :class:`xcoll.beamgas.ProtonDiffractionCalculator`, or a mapping
+            ``{element_symbol: scale}`` (species not listed get the default).
+            The absorption cross section changes accordingly, so that the
+            inelastic cross section is unchanged. Default 0.65
+            (:data:`xcoll.beamgas.proton_cross_sections.DEFAULT_SD_SCALE`).
         knock_on_cut : float, optional
             Minimum energy transferred to a knock-on electron, as a fraction
             of the proton energy. Default 1e-6.
@@ -149,7 +152,8 @@ class ProtonBeamGasStudy(BeamGasStudy):
             raise ValueError("`brems_energy_cut` only applies to electron and "
                              "positron beams.")
         self.interference = bool(interference)
-        self.sd_scale = float(sd_scale)
+        self._sd_scale_spec = (dict(sd_scale) if isinstance(sd_scale, dict)
+                               else float(sd_scale))
         self.knock_on_cut = float(knock_on_cut)
         self._n_events_spec = n_scattering_events
 
@@ -169,6 +173,12 @@ class ProtonBeamGasStudy(BeamGasStudy):
                          bunch_intensity=bunch_intensity,
                          n_scattering_events=n_base,
                          coulomb_theta=coulomb_theta, seed=seed, **kwargs)
+
+        if isinstance(self._sd_scale_spec, dict):
+            unknown = set(self._sd_scale_spec) - set(self.gas_species)
+            if unknown:
+                raise ValueError(f"`sd_scale` has species that are not in the "
+                                 f"gas: {sorted(unknown)}.")
 
         if isinstance(n_scattering_events, dict):
             spec = {kk.lower(): int(vv)
@@ -249,11 +259,18 @@ class ProtonBeamGasStudy(BeamGasStudy):
         cross_sections = {kk: ProtonNucleusCrossSections(Z, self.p0c)
                           for kk, Z in self.atomic_numbers.items()}
         theta = self.coulomb_theta
+        spec = self._sd_scale_spec
+        self.sd_scale = {kk: float(spec.get(kk, DEFAULT_SD_SCALE)
+                                   if isinstance(spec, dict) else spec)
+                         for kk in self.atomic_numbers}
 
         def build(process, Z, xs):
+            symbol = next(kk for kk, zz in self.atomic_numbers.items()
+                          if zz == Z)
             if process == 'absorption':
                 return ProtonAbsorptionCalculator(
-                    Z, self.p0c, sd_scale=self.sd_scale, cross_sections=xs)
+                    Z, self.p0c, sd_scale=self.sd_scale[symbol],
+                    cross_sections=xs)
             if process == 'elastic':
                 return ProtonElasticCalculator(
                     Z, self.p0c, theta_lim=theta,
@@ -271,7 +288,8 @@ class ProtonBeamGasStudy(BeamGasStudy):
                                                     cross_sections=xs)
             if process == 'diffractive':
                 return ProtonDiffractionCalculator(
-                    Z, self.p0c, sd_scale=self.sd_scale, cross_sections=xs)
+                    Z, self.p0c, sd_scale=self.sd_scale[symbol],
+                    cross_sections=xs)
             if process == 'knock_on':
                 return ProtonKnockOnCalculator(
                     Z, self.p0c, cut=self.knock_on_cut, cross_sections=xs)

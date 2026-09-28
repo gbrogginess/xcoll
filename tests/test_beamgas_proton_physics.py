@@ -334,7 +334,9 @@ class TestOtherProcesses:
             s = 2*pcs._MP*p0c*1e-9
             sd_h = pcs.ProtonDiffractionCalculator(1, p0c)
             assert sd_h.n_eff == 1.0
-            assert np.isclose(sd_h.compute_xsec()/MB, 4.3 + 0.3*np.log(s))
+            assert sd_h.sd_scale == pcs.DEFAULT_SD_SCALE == 0.65
+            assert np.isclose(sd_h.compute_xsec()/MB,
+                              0.65*(4.3 + 0.3*np.log(s)))
             sd_n = pcs.ProtonDiffractionCalculator(7, p0c, sd_scale=0.5)
             n_eff = 1.6177*proton_data.NIST_ATOMIC_MASS[7]**(1/3)
             assert np.isclose(sd_n.compute_xsec()/MB,

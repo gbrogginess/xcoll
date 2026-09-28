@@ -176,6 +176,22 @@ class TestConstruction:
             _study(*ring, process=['absorption', 'elastic'],
                    n_scattering_events={'absorption': 10})
 
+    def test_sd_scale_per_species(self, ring):
+        study = _study(*ring, process=['absorption', 'diffractive'],
+                       sd_scale={'N': 0.1})
+        assert study.sd_scale == {'N': 0.1, 'H': pcs.DEFAULT_SD_SCALE}
+        for kk, Z in (('N', 7), ('H', 1)):
+            sd = study.calculators['diffractive'][kk]
+            assert sd.sd_scale == study.sd_scale[kk]
+            # The inelastic cross section is split, not changed
+            xs = sd.cross_sections
+            assert np.isclose(
+                study.process_xsecs['absorption'][kk]
+                + study.process_xsecs['diffractive'][kk],
+                xs.inelastic - xs.quasi_elastic)
+        with pytest.raises(ValueError, match='not in the gas'):
+            _study(*ring, sd_scale={'Ar': 0.1})
+
     def test_line_facade(self, ring):
         study = ring[0].xcoll.beamgas_configure(
             gas_density=ring[1], nemitt_x=NEMITT, nemitt_y=NEMITT,

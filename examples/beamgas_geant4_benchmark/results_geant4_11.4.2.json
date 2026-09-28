@@ -1,0 +1,578 @@
+{
+  "H_450GeV": {
+    "n_events": 4000000,
+    "column_density_cm2": 1.4996716003045362e+24,
+    "sigma_inelastic_g4_mb": 33.41792450035835,
+    "sigma_inelastic_g4_err_mb": 0.07577682730849122,
+    "sigma_inelastic_model_mb": 33.340632702417366,
+    "sigma_elastic_g4_mb": 7.167280082057474,
+    "sigma_elastic_g4_err_mb": 0.0350932725389052,
+    "sigma_elastic_model_mb": 7.192385887295934,
+    "elastic_t_ks_distance": 0.00447607871509581,
+    "elastic_t_ks_1sigma": 0.002448158306716483,
+    "elastic_mean_t_g4": 0.08970840791488892,
+    "elastic_mean_t_model": 0.08933845093277787,
+    "leading_proton": {
+      "0.001": {
+        "fraction_g4": 0.004730441936396123,
+        "fraction_g4_err": 0.0001555887396438584,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.015065191999372066,
+        "sd_scale_matching_g4": 0.3139981180852719
+      },
+      "0.003": {
+        "fraction_g4": 0.02406355245905854,
+        "fraction_g4_err": 0.0003474942191126001,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.042900862183096376,
+        "sd_scale_matching_g4": 0.5609106958353849
+      },
+      "0.01": {
+        "fraction_g4": 0.05318662107617554,
+        "fraction_g4_err": 0.0005088506548521787,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.08356768466154733,
+        "sd_scale_matching_g4": 0.6364496191510344
+      },
+      "0.03": {
+        "fraction_g4": 0.08426356788441268,
+        "fraction_g4_err": 0.0006298862277882663,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.1255977785574734,
+        "sd_scale_matching_g4": 0.6709001453067402
+      },
+      "0.1": {
+        "fraction_g4": 0.1314908604776718,
+        "fraction_g4_err": 0.0007662878235386178,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.17363555741344108,
+        "sd_scale_matching_g4": 0.7572807231215946
+      },
+      "0.15": {
+        "fraction_g4": 0.154433503869193,
+        "fraction_g4_err": 0.0008194106235375539,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.18960659492004364,
+        "sd_scale_matching_g4": 0.8144943689027114
+      }
+    },
+    "knock_on": {
+      "0.0001": {
+        "probability_g4": 0.009633341596252515,
+        "probability_g4_err": 5.059120669090925e-05,
+        "probability_model": 0.008470893614367495
+      },
+      "0.001": {
+        "probability_g4": 0.0008459528832938388,
+        "probability_g4_err": 1.4992002482240314e-05,
+        "probability_model": 0.000830402803407932
+      },
+      "0.01": {
+        "probability_g4": 8.820865491631735e-05,
+        "probability_g4_err": 4.841078865787768e-06,
+        "probability_model": 7.221531482511708e-05
+      }
+    },
+    "angle": {
+      "msc_rms_rad": 6.030572585869345e-06,
+      "6.03e-05": {
+        "probability_g4": 0.001069928473939789,
+        "probability_g4_err": 1.6860246923874717e-05,
+        "probability_model_nucleus": 0.0005227131431810787,
+        "probability_model_electrons": 0.0005100941461680627
+      },
+      "0.000181": {
+        "probability_g4": 0.00011212063968278892,
+        "probability_g4_err": 5.457947343198923e-06,
+        "probability_model_nucleus": 5.3836648046305526e-05,
+        "probability_model_electrons": 4.653319423280568e-05
+      },
+      "0.000603": {
+        "probability_g4": 2.922575915902081e-06,
+        "probability_g4_err": 8.811897940342254e-07,
+        "probability_model_nucleus": 3.099558385447257e-06,
+        "probability_model_electrons": 0.0
+      }
+    }
+  },
+  "N_450GeV": {
+    "n_events": 4000000,
+    "column_density_cm2": 1.7319535884181978e+23,
+    "sigma_inelastic_g4_mb": 288.82661243284264,
+    "sigma_inelastic_g4_err_mb": 0.6563512329670718,
+    "sigma_inelastic_model_mb": 288.6913386961209,
+    "sigma_elastic_g4_mb": 91.67462846557741,
+    "sigma_elastic_g4_err_mb": 0.36977903215031643,
+    "sigma_elastic_model_mb": 91.97646456306144,
+    "elastic_t_ks_distance": 0.003516474791937285,
+    "elastic_t_ks_1sigma": 0.002016801367726096,
+    "elastic_mean_t_g4": 0.024507814796437537,
+    "elastic_mean_t_model": 0.02469247258910645,
+    "leading_proton": {
+      "0.001": {
+        "fraction_g4": 0.07384723434361169,
+        "fraction_g4_err": 0.0005943024633782623,
+        "fraction_model_qe": 0.1081691594963305,
+        "fraction_model_sd": 0.006807157512028762,
+        "sd_scale_matching_g4": -5.042034812925862
+      },
+      "0.003": {
+        "fraction_g4": 0.10301430983820742,
+        "fraction_g4_err": 0.0006907813993555569,
+        "fraction_model_qe": 0.10817943654280207,
+        "fraction_model_sd": 0.019356106492105868,
+        "sd_scale_matching_g4": -0.266847400674365
+      },
+      "0.01": {
+        "fraction_g4": 0.10432083783044055,
+        "fraction_g4_err": 0.0006946417262760443,
+        "fraction_model_qe": 0.10817943654280207,
+        "fraction_model_sd": 0.037672675289524366,
+        "sd_scale_matching_g4": -0.10242433495118627
+      },
+      "0.03": {
+        "fraction_g4": 0.104754625780431,
+        "fraction_g4_err": 0.0006959158797573894,
+        "fraction_model_qe": 0.10817943654280207,
+        "fraction_model_sd": 0.0566054956936292,
+        "sd_scale_matching_g4": -0.06050314939219802
+      },
+      "0.1": {
+        "fraction_g4": 0.11033706356542711,
+        "fraction_g4_err": 0.0007119878111316537,
+        "fraction_model_qe": 0.10817943654280207,
+        "fraction_model_sd": 0.07818348059723419,
+        "sd_scale_matching_g4": 0.027596968133718057
+      },
+      "0.15": {
+        "fraction_g4": 0.11644624386112588,
+        "fraction_g4_err": 0.0007289174207190789,
+        "fraction_model_qe": 0.10817943654280207,
+        "fraction_model_sd": 0.08538297286959877,
+        "sd_scale_matching_g4": 0.09682032658840894
+      }
+    },
+    "knock_on": {
+      "0.0001": {
+        "probability_g4": 0.007547877189581334,
+        "probability_g4_err": 4.4894449223821045e-05,
+        "probability_model": 0.006848056743005151
+      },
+      "0.001": {
+        "probability_g4": 0.0006798590293877477,
+        "probability_g4_err": 1.3473786773716814e-05,
+        "probability_model": 0.0006713158937143234
+      },
+      "0.01": {
+        "probability_g4": 5.8746656113630985e-05,
+        "probability_g4_err": 3.960698747198539e-06,
+        "probability_model": 5.838044911785955e-05
+      }
+    },
+    "angle": {
+      "msc_rms_rad": 9.841323910693428e-06,
+      "9.84e-05": {
+        "probability_g4": 0.0011124480425881212,
+        "probability_g4_err": 1.7235349853005104e-05,
+        "probability_model_nucleus": 0.0009295185547191936,
+        "probability_model_electrons": 0.00014829842090868382
+      },
+      "0.000295": {
+        "probability_g4": 6.088289815412666e-05,
+        "probability_g4_err": 4.032068429851819e-06,
+        "probability_model_nucleus": 4.908435478161652e-05,
+        "probability_model_electrons": 1.0029279569197367e-05
+      },
+      "0.000984": {
+        "probability_g4": 0.0,
+        "probability_g4_err": 2.6703025506195903e-07,
+        "probability_model_nucleus": 2.9713953690339387e-07,
+        "probability_model_electrons": 0.0
+      }
+    }
+  },
+  "Ar_450GeV": {
+    "n_events": 4000000,
+    "column_density_cm2": 8.486097292741526e+22,
+    "sigma_inelastic_g4_mb": 588.4987594733083,
+    "sigma_inelastic_g4_err_mb": 1.3413061897009366,
+    "sigma_inelastic_model_mb": 589.1989954294639,
+    "sigma_elastic_g4_mb": 289.4772393768769,
+    "sigma_elastic_g4_err_mb": 0.9407243032776654,
+    "sigma_elastic_model_mb": 288.93537571862896,
+    "elastic_t_ks_distance": 0.004745142997850227,
+    "elastic_t_ks_1sigma": 0.001624867477150622,
+    "elastic_mean_t_g4": 0.008688366787614319,
+    "elastic_mean_t_model": 0.008580256844707864,
+    "leading_proton": {
+      "0.001": {
+        "fraction_g4": 0.04755275269867326,
+        "fraction_g4_err": 0.0004850546513775264,
+        "fraction_model_qe": 0.08480154054960815,
+        "fraction_model_sd": 0.004631750128139608,
+        "sd_scale_matching_g4": -8.042054692163685
+      },
+      "0.003": {
+        "fraction_g4": 0.0742070212257535,
+        "fraction_g4_err": 0.000597395322414444,
+        "fraction_model_qe": 0.08480980950603498,
+        "fraction_model_sd": 0.013327776451081368,
+        "sd_scale_matching_g4": -0.7955406754606248
+      },
+      "0.01": {
+        "fraction_g4": 0.07677842308131863,
+        "fraction_g4_err": 0.0006068130946810297,
+        "fraction_model_qe": 0.08480980950603498,
+        "fraction_model_sd": 0.026098016437077657,
+        "sd_scale_matching_g4": -0.3077393427228474
+      },
+      "0.03": {
+        "fraction_g4": 0.07735504046711203,
+        "fraction_g4_err": 0.000608897221915202,
+        "fraction_model_qe": 0.08480980950603498,
+        "fraction_model_sd": 0.039296605800878064,
+        "sd_scale_matching_g4": -0.18970516376649443
+      },
+      "0.1": {
+        "fraction_g4": 0.08159915221660034,
+        "fraction_g4_err": 0.0006239378589489179,
+        "fraction_model_qe": 0.08480980950603498,
+        "fraction_model_sd": 0.05430692911546705,
+        "sd_scale_matching_g4": -0.059120582616780916
+      },
+      "0.15": {
+        "fraction_g4": 0.08623806505906433,
+        "fraction_g4_err": 0.0006398061495793532,
+        "fraction_model_qe": 0.08480980950603498,
+        "fraction_model_sd": 0.05932816867093132,
+        "sd_scale_matching_g4": 0.02407381830629709
+      }
+    },
+    "knock_on": {
+      "0.0001": {
+        "probability_g4": 0.009643913717057279,
+        "probability_g4_err": 5.096539710985374e-05,
+        "probability_model": 0.00862806825414966
+      },
+      "0.001": {
+        "probability_g4": 0.0008309074964285791,
+        "probability_g4_err": 1.4959776079989932e-05,
+        "probability_model": 0.0008458106538002885
+      },
+      "0.01": {
+        "probability_g4": 7.649197049780112e-05,
+        "probability_g4_err": 4.5389633792947864e-06,
+        "probability_model": 7.355524619612875e-05
+      }
+    },
+    "angle": {
+      "msc_rms_rad": 1.6217262317389392e-05,
+      "0.000162": {
+        "probability_g4": 0.0008839670675133215,
+        "probability_g4_err": 1.543003094951584e-05,
+        "probability_model_nucleus": 0.0007286890565925393,
+        "probability_model_electrons": 6.149054048129468e-05
+      },
+      "0.000487": {
+        "probability_g4": 1.3466896214401607e-05,
+        "probability_g4_err": 1.9045067269477644e-06,
+        "probability_model_nucleus": 1.3145097066344192e-05,
+        "probability_model_electrons": 1.3686283490222237e-06
+      },
+      "0.00162": {
+        "probability_g4": 0.0,
+        "probability_g4_err": 2.693379242880321e-07,
+        "probability_model_nucleus": 2.2150050538837554e-08,
+        "probability_model_electrons": 0.0
+      }
+    }
+  },
+  "H_6800GeV": {
+    "n_events": 4000000,
+    "column_density_cm2": 1.3003163487428586e+24,
+    "sigma_inelastic_g4_mb": 38.5164433521294,
+    "sigma_inelastic_g4_err_mb": 0.08738719072322654,
+    "sigma_inelastic_model_mb": 38.452181308294584,
+    "sigma_elastic_g4_mb": 9.03837574816758,
+    "sigma_elastic_g4_err_mb": 0.04233210703944275,
+    "sigma_elastic_model_mb": 9.115769779687339,
+    "elastic_t_ks_distance": 0.004450853685736389,
+    "elastic_t_ks_1sigma": 0.002341798361725837,
+    "elastic_mean_t_g4": 0.07687032560265904,
+    "elastic_mean_t_model": 0.07708155866598308,
+    "leading_proton": {
+      "0.001": {
+        "fraction_g4": 0.03913191191459133,
+        "fraction_g4_err": 0.00043994564160431847,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.061320333029804074,
+        "sd_scale_matching_g4": 0.638155567347811
+      },
+      "0.003": {
+        "fraction_g4": 0.057457300814347335,
+        "fraction_g4_err": 0.0005279888217019183,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.08805324226077484,
+        "sd_scale_matching_g4": 0.6525290760354306
+      },
+      "0.01": {
+        "fraction_g4": 0.07783657459359847,
+        "fraction_g4_err": 0.0006078513777080699,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.11777364155627788,
+        "sd_scale_matching_g4": 0.6608997867863704
+      },
+      "0.03": {
+        "fraction_g4": 0.09934831622620531,
+        "fraction_g4_err": 0.0006786725583237291,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.14540386493304852,
+        "sd_scale_matching_g4": 0.6832577405831023
+      },
+      "0.1": {
+        "fraction_g4": 0.13435186805719992,
+        "fraction_g4_err": 0.0007737384047699124,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.1754907989623581,
+        "sd_scale_matching_g4": 0.7655778471099087
+      },
+      "0.15": {
+        "fraction_g4": 0.15256401017162036,
+        "fraction_g4_err": 0.0008157951159282474,
+        "fraction_model_qe": 0.0,
+        "fraction_model_sd": 0.18558720699066794,
+        "sd_scale_matching_g4": 0.8220610280496967
+      }
+    },
+    "knock_on": {
+      "0.0001": {
+        "probability_g4": 0.000481098212383718,
+        "probability_g4_err": 1.1311350496742141e-05,
+        "probability_model": 0.0004847887625440824
+      },
+      "0.001": {
+        "probability_g4": 4.52109983997966e-05,
+        "probability_g4_err": 3.4675252883478486e-06,
+        "probability_model": 4.682705681021776e-05
+      },
+      "0.01": {
+        "probability_g4": 2.6594704941056826e-06,
+        "probability_g4_err": 8.409984131387362e-07,
+        "probability_model": 3.7642090182589174e-06
+      }
+    },
+    "angle": {
+      "msc_rms_rad": 3.7161101460721987e-07,
+      "3.72e-06": {
+        "probability_g4": 0.0010784152853598543,
+        "probability_g4_err": 1.6935210750997735e-05,
+        "probability_model_nucleus": 0.0005223600876567786,
+        "probability_model_electrons": 0.0005289725517243718
+      },
+      "1.11e-05": {
+        "probability_g4": 0.00010611287271481673,
+        "probability_g4_err": 5.312288151351045e-06,
+        "probability_model_nucleus": 5.4624692479563645e-05,
+        "probability_model_electrons": 5.688102130866794e-05
+      },
+      "3.72e-05": {
+        "probability_g4": 6.648676235264206e-06,
+        "probability_g4_err": 1.3297352470528413e-06,
+        "probability_model_nucleus": 3.2499541278321687e-06,
+        "probability_model_electrons": 4.2207662934235486e-06
+      }
+    }
+  },
+  "N_6800GeV": {
+    "n_events": 4000000,
+    "column_density_cm2": 1.5840224915004497e+23,
+    "sigma_inelastic_g4_mb": 316.3312150492721,
+    "sigma_inelastic_g4_err_mb": 0.7185709322548236,
+    "sigma_inelastic_model_mb": 315.652083655946,
+    "sigma_elastic_g4_mb": 111.08057878662646,
+    "sigma_elastic_g4_err_mb": 0.42581179507260936,
+    "sigma_elastic_model_mb": 111.17549286590017,
+    "elastic_t_ks_distance": 0.0029739110418544046,
+    "elastic_t_ks_1sigma": 0.001916679764023137,
+    "elastic_mean_t_g4": 0.04254104766035413,
+    "elastic_mean_t_model": 0.043520778118862916,
+    "leading_proton": {
+      "0.001": {
+        "fraction_g4": 0.10793824433940845,
+        "fraction_g4_err": 0.0007048760115707085,
+        "fraction_model_qe": 0.11268939025013038,
+        "fraction_model_sd": 0.029111273684687584,
+        "sd_scale_matching_g4": -0.16320639083617322
+      },
+      "0.003": {
+        "fraction_g4": 0.10795372453507812,
+        "fraction_g4_err": 0.0007049204389940599,
+        "fraction_model_qe": 0.11268939025013038,
+        "fraction_model_sd": 0.04174252605979825,
+        "sd_scale_matching_g4": -0.11344942824658422
+      },
+      "0.01": {
+        "fraction_g4": 0.10812916675266776,
+        "fraction_g4_err": 0.0007054236317324625,
+        "fraction_model_qe": 0.11268939025013038,
+        "fraction_model_sd": 0.05591139071478587,
+        "sd_scale_matching_g4": -0.0815616181097183
+      },
+      "0.03": {
+        "fraction_g4": 0.10929534149311647,
+        "fraction_g4_err": 0.0007087536086319897,
+        "fraction_model_qe": 0.11268939025013038,
+        "fraction_model_sd": 0.06900368435254561,
+        "sd_scale_matching_g4": -0.04918648603853421
+      },
+      "0.1": {
+        "fraction_g4": 0.11637495097938037,
+        "fraction_g4_err": 0.000728435932203274,
+        "fraction_model_qe": 0.11268939025013038,
+        "fraction_model_sd": 0.08336384146259031,
+        "sd_scale_matching_g4": 0.04421054337933672
+      },
+      "0.15": {
+        "fraction_g4": 0.12317075687836694,
+        "fraction_g4_err": 0.0007465156442945458,
+        "fraction_model_qe": 0.11268939025013038,
+        "fraction_model_sd": 0.08815320509542472,
+        "sd_scale_matching_g4": 0.11889943895846578
+      }
+    },
+    "knock_on": {
+      "0.0001": {
+        "probability_g4": 0.0004122357785344202,
+        "probability_g4_err": 1.0501331367151749e-05,
+        "probability_model": 0.00041339279704299736
+      },
+      "0.001": {
+        "probability_g4": 4.253438597467412e-05,
+        "probability_g4_err": 3.3731962244762896e-06,
+        "probability_model": 3.993072754096073e-05
+      },
+      "0.01": {
+        "probability_g4": 3.210142337711254e-06,
+        "probability_g4_err": 9.266882714073035e-07,
+        "probability_model": 3.209845225261449e-06
+      }
+    },
+    "angle": {
+      "msc_rms_rad": 6.228302165062694e-07,
+      "6.23e-06": {
+        "probability_g4": 0.001161804014389998,
+        "probability_g4_err": 1.7629417306300447e-05,
+        "probability_model_nucleus": 0.0009481654392846331,
+        "probability_model_electrons": 0.0001596162873786093
+      },
+      "1.87e-05": {
+        "probability_g4": 6.794801281488821e-05,
+        "probability_g4_err": 4.26343750883036e-06,
+        "probability_model_nucleus": 5.160405246683863e-05,
+        "probability_model_electrons": 1.652740153736857e-05
+      },
+      "6.23e-05": {
+        "probability_g4": 1.0700474459037513e-06,
+        "probability_g4_err": 5.350237229518757e-07,
+        "probability_model_nucleus": 3.3954951117294456e-07,
+        "probability_model_electrons": 9.680416296308829e-07
+      }
+    }
+  },
+  "Ar_6800GeV": {
+    "n_events": 4000000,
+    "column_density_cm2": 7.920785694954588e+22,
+    "sigma_inelastic_g4_mb": 631.3283046807411,
+    "sigma_inelastic_g4_err_mb": 1.4385422099848495,
+    "sigma_inelastic_model_mb": 631.2505087954746,
+    "sigma_elastic_g4_mb": 329.3229810542324,
+    "sigma_elastic_g4_err_mb": 1.0389771545417825,
+    "sigma_elastic_model_mb": 329.06372475752767,
+    "elastic_t_ks_distance": 0.004771996711400939,
+    "elastic_t_ks_1sigma": 0.001577444050846068,
+    "elastic_mean_t_g4": 0.009173733315599559,
+    "elastic_mean_t_model": 0.009057895953574202,
+    "leading_proton": {
+      "0.001": {
+        "fraction_g4": 0.07414695437270254,
+        "fraction_g4_err": 0.0005970147169820658,
+        "fraction_model_qe": 0.08820985915318444,
+        "fraction_model_sd": 0.02077677919307885,
+        "sd_scale_matching_g4": -0.6768568241398325
+      },
+      "0.003": {
+        "fraction_g4": 0.0741781063736994,
+        "fraction_g4_err": 0.0005971300722749192,
+        "fraction_model_qe": 0.08820985915318444,
+        "fraction_model_sd": 0.029700514158433167,
+        "sd_scale_matching_g4": -0.4724414097558935
+      },
+      "0.01": {
+        "fraction_g4": 0.07428713837718842,
+        "fraction_g4_err": 0.0005975335740226321,
+        "fraction_model_qe": 0.08820985915318444,
+        "fraction_model_sd": 0.039761497496721115,
+        "sd_scale_matching_g4": -0.35015584554239026
+      },
+      "0.03": {
+        "fraction_g4": 0.07512305040393762,
+        "fraction_g4_err": 0.000600614667629849,
+        "fraction_model_qe": 0.08820985915318444,
+        "fraction_model_sd": 0.0489890404649589,
+        "sd_scale_matching_g4": -0.2671374786082535
+      },
+      "0.1": {
+        "fraction_g4": 0.08026313056842017,
+        "fraction_g4_err": 0.0006190948544998833,
+        "fraction_model_qe": 0.08820985915318444,
+        "fraction_model_sd": 0.059103940346968455,
+        "sd_scale_matching_g4": -0.1344534482491888
+      },
+      "0.15": {
+        "fraction_g4": 0.08554858673755478,
+        "fraction_g4_err": 0.0006373149207588454,
+        "fraction_model_qe": 0.08820985915318444,
+        "fraction_model_sd": 0.06251193474968438,
+        "sd_scale_matching_g4": -0.04257222922768518
+      }
+    },
+    "knock_on": {
+      "0.0001": {
+        "probability_g4": 0.0005362932693306343,
+        "probability_g4_err": 1.2028020411304541e-05,
+        "probability_model": 0.0005315502045685548
+      },
+      "0.001": {
+        "probability_g4": 5.314374952622482e-05,
+        "probability_g4_err": 3.786335379039889e-06,
+        "probability_model": 5.134387087726942e-05
+      },
+      "0.01": {
+        "probability_g4": 3.2371827122573494e-06,
+        "probability_g4_err": 9.344941551688918e-07,
+        "probability_model": 4.127294665813104e-06
+      }
+    },
+    "angle": {
+      "msc_rms_rad": 1.036838871971457e-06,
+      "1.04e-05": {
+        "probability_g4": 0.0008888764197406639,
+        "probability_g4_err": 1.5485087932474705e-05,
+        "probability_model_nucleus": 0.0007503868685694544,
+        "probability_model_electrons": 7.207420974758843e-05
+      },
+      "3.11e-05": {
+        "probability_g4": 2.3469574663865784e-05,
+        "probability_g4_err": 2.5162025184442033e-06,
+        "probability_model_nucleus": 1.453655603794346e-05,
+        "probability_model_electrons": 7.003745403970317e-06
+      },
+      "0.000104": {
+        "probability_g4": 5.395304520428916e-07,
+        "probability_g4_err": 3.8150564129617205e-07,
+        "probability_model_nucleus": 2.5110875480362812e-08,
+        "probability_model_electrons": 2.6806160023763394e-07
+      }
+    }
+  }
+}
