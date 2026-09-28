@@ -22,6 +22,15 @@ C_LIGHT = sc.c
 
 PDG_ID_ELECTRON = 11
 PDG_ID_POSITRON = -11
+PDG_ID_PROTON = 2212
+
+
+def _reference_pdg_id(line):
+    """PDG id of the reference particle of a line, or None if not set."""
+    particle_ref = getattr(line, 'particle_ref', None)
+    if particle_ref is None:
+        return None
+    return int(np.atleast_1d(particle_ref.pdg_id)[0])
 
 
 def _allocated_mask(particles):
@@ -65,6 +74,84 @@ def _lost_mask(particles):
         ``True`` for the allocated particles that are lost.
     """
     return _allocated_mask(particles) & (particles.state <= 0)
+
+
+
+def _cutoff_scan_table(x, weight, lost, i_stratum, *, n_strata, window,
+                       bins_per_decade, bunch_intensity):
+    """
+    Tabulate the loss rate as a function of the lower generation cut.
+
+    The events above a cut are an unbiased importance sample of a study
+    generated with its lower cut set there, so the loss rate of every such
+    study follows from the single tracked sample. The loss rate of each
+    stratum (an element, or an element and a process) is a sum of
+    independent event contributions, so its variance is the number of events
+    times their sample variance.
+
+    Parameters
+    ----------
+    x, weight, lost : ndarray
+        Generation variable, weight [1/s] and loss flag of each event.
+    i_stratum : ndarray of int
+        Index of the stratum of each event.
+    n_strata : int
+        Number of strata.
+    window : tuple of float
+        Range ``(lo, hi)`` of the generation variable.
+    bins_per_decade : int
+        Resolution of the scan.
+    bunch_intensity : float
+        Number of particles in the bunch, for the lifetime.
+
+    Returns
+    -------
+    table : xtrack.Table
+        See :attr:`BeamGasResult.cutoff_scan`.
+    """
+    lo, hi = window
+    n_bins = max(int(np.ceil(bins_per_decade*np.log10(hi/lo))), 1)
+    edges = np.geomspace(lo, hi, n_bins + 1)
+    i_bin = np.clip(np.searchsorted(edges, x, side='right') - 1,
+                    0, n_bins - 1)
+    contribution = weight*lost
+
+    def per_bin(values, stratum_wise=False):
+        if not stratum_wise:
+            return np.bincount(i_bin, weights=values, minlength=n_bins)
+        flat = np.bincount(i_stratum*n_bins + i_bin, weights=values,
+                           minlength=n_strata*n_bins)
+        return flat.reshape(n_strata, n_bins)
+
+    def above(binned):
+        # Sum over all the bins from the current one upwards
+        return np.flip(np.cumsum(np.flip(binned, axis=-1), axis=-1),
+                       axis=-1)
+
+    num_events = per_bin(np.ones_like(x))
+    weight_in_bin = per_bin(weight)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        loss_probability = per_bin(contribution)/weight_in_bin
+
+    s1 = above(per_bin(contribution, stratum_wise=True))
+    s2 = above(per_bin(contribution**2, stratum_wise=True))
+    n = np.bincount(i_stratum, minlength=n_strata)[:, None]
+    with np.errstate(invalid='ignore', divide='ignore'):
+        variance = np.where(n > 1, n*(s2 - s1**2/n)/(n - 1), 0.0)
+    rate = s1.sum(axis=0)
+    with np.errstate(divide='ignore'):
+        lifetime = np.where(rate > 0, bunch_intensity/rate, np.inf)
+
+    return xt.Table({
+        'cut': edges[:-1],
+        'num_events': num_events.astype(int),
+        'num_lost': per_bin(lost.astype(float)).astype(int),
+        'loss_probability': loss_probability,
+        'rate_tracking': rate,
+        'rate_tracking_error': np.sqrt(np.maximum(variance, 0.0)
+                                       .sum(axis=0)),
+        'lifetime_tracking': lifetime,
+    }, index='cut')
 
 
 @dataclass
@@ -130,7 +217,10 @@ class BeamGasResult:
         its lower cut set to ``cut`` would give. If ``lifetime_tracking``
         has not saturated in the first rows, the configured cut is too high.
         Only losses of the generated primaries are included. ``None`` when
-        tracking is disabled.
+        tracking is disabled. For proton beams it is a mapping
+        ``{process: table}`` for the processes generated above a lower cut:
+        the elastic variants (cut in angle) and ``'knock_on'`` (cut in
+        energy transfer, [eV]).
     rate_above_theta_max : float or None
         Interaction rate for Coulomb scattering above ``theta_max`` [1/s],
         which is not generated. It is an upper bound on the loss rate missing
@@ -158,7 +248,16 @@ class BeamGasResult:
         of the element named in the same row, i.e. to
         ``particles_by_element[name]``; :meth:`xtrack.Particles.merge`
         renumbers the particles, so the log cannot be joined to ``particles``
-        by id.
+        by id. For proton beams it has the additional columns described in
+        :meth:`xcoll.beamgas.proton_study.ProtonBeamGasStudy.interaction_log`.
+    process_rates : xtrack.Table or None
+        Proton beams only: interaction and, when tracked, loss rates of each
+        process. ``None`` for electron and positron beams.
+    rate_out_of_bucket : float or None
+        Proton beams only: rate [1/s] of the protons that survive the
+        tracking outside the RF bucket (not counted in ``rate_tracking``).
+        ``None`` when not tracked, for lines without RF, and for electron and
+        positron beams.
 
     Attributes
     ----------
@@ -166,7 +265,7 @@ class BeamGasResult:
     lifetime_scattering, rate_tracking, lifetime_tracking, tracked,
     rate_tracking_error, lifetime_tracking_error, cutoff_scan,
     rate_above_theta_max, particles_by_element, particles, lost_particles,
-    interaction_log
+    interaction_log, process_rates, rate_out_of_bucket
         See above.
     """
     element_names: list
@@ -185,6 +284,8 @@ class BeamGasResult:
     particles: xt.Particles | None = None
     lost_particles: xt.Particles | None = None
     interaction_log: xt.Table | None = None
+    process_rates: xt.Table | None = None
+    rate_out_of_bucket: float | None = None
 
 
 class BeamGasStudy:
@@ -192,7 +293,19 @@ class BeamGasStudy:
     Monte Carlo study of beam-residual-gas scattering in a line.
 
     See :meth:`__init__` for the full description of the parameters.
+
+    For a line whose reference particle is a proton, the constructor returns
+    a :class:`xcoll.beamgas.proton_study.ProtonBeamGasStudy`, which has its
+    own processes and parameters.
     """
+
+    def __new__(cls, *args, **kwargs):
+        if cls is BeamGasStudy:
+            line = kwargs.get('line', args[0] if args else None)
+            if _reference_pdg_id(line) == PDG_ID_PROTON:
+                from .proton_study import ProtonBeamGasStudy
+                return super().__new__(ProtonBeamGasStudy)
+        return super().__new__(cls)
 
     def __init__(self, line=None, gas_density=None, process='brems',
                  elements=None, twiss=None,
@@ -227,7 +340,9 @@ class BeamGasStudy:
         line : xtrack.Line
             Line containing the :class:`xcoll.BeamGasScattering` elements to
             configure. It must have a ``particle_ref`` with its PDG id set to
-            an electron (``11``) or a positron (``-11``).
+            an electron (``11``) or a positron (``-11``). For a proton
+            (``2212``) a :class:`xcoll.beamgas.proton_study.ProtonBeamGasStudy`
+            is built instead, with its own processes and parameters.
         gas_density : xtrack.Table
             Residual-gas density profile. It must contain a column ``s`` with
             the longitudinal positions [m] and one column per gas species,
@@ -317,26 +432,7 @@ class BeamGasStudy:
 
         particle_ref = line.particle_ref
         pdg_id = int(np.atleast_1d(particle_ref.pdg_id)[0])
-        if pdg_id == 0:
-            raise ValueError(
-                "The reference particle has no PDG id set. The beam-gas "
-                "models need to know whether the beam is made of electrons "
-                "or positrons.")
-        if pdg_id not in (PDG_ID_ELECTRON, PDG_ID_POSITRON):
-            raise ValueError(
-                "The beam-gas models implemented in Xcoll are only valid for "
-                "electron and positron beams, but the reference particle is "
-                f"a {pdg.get_name_from_pdg_id(pdg_id)} (PDG id {pdg_id}).")
-
-        # q0 sets the sign of the McKinley-Feshbach interference term, so it
-        # must agree with the PDG id rather than be trusted blindly
-        q0_from_pdg = -1.0 if pdg_id == PDG_ID_ELECTRON else 1.0
-        if not np.isclose(float(particle_ref.q0), q0_from_pdg):
-            raise ValueError(
-                f"The reference particle is a "
-                f"{pdg.get_name_from_pdg_id(pdg_id)} (PDG id {pdg_id}), which "
-                f"must have q0={q0_from_pdg:+.0f}, but it has "
-                f"q0={float(particle_ref.q0):+g}.")
+        q0_from_pdg = self._validate_beam(particle_ref, pdg_id)
 
         self.line = line
         self.particle_ref = particle_ref
@@ -346,7 +442,7 @@ class BeamGasStudy:
         self.q0 = q0_from_pdg
         self.beta0 = float(particle_ref.beta0[0])
 
-        self.process = _resolve_process(process)
+        self.process = self._resolve_study_process(process)
         self.elements = self._resolve_elements(elements)
         self.gas_density = self._validate_gas_density(gas_density)
         self.gas_species = [cc for cc in self.gas_density._col_names
@@ -395,8 +491,7 @@ class BeamGasStudy:
 
         # Cross-section models, shared by all the scattering elements
         self.calculators = self._build_calculators()
-        self.xsecs = {kk: cc.compute_xsec()
-                      for kk, cc in self.calculators.items()}
+        self.xsecs = self._compute_xsecs()
 
     def __repr__(self):
         return (f"<BeamGasStudy process='{self.process}', "
@@ -406,6 +501,61 @@ class BeamGasStudy:
     # ######################################################## #
     # Validation helpers
     # ######################################################## #
+    def _validate_beam(self, particle_ref, pdg_id):
+        """
+        Check that the beam species is supported by the models of the study.
+
+        Parameters
+        ----------
+        particle_ref : xtrack.Particles
+            Reference particle of the line.
+        pdg_id : int
+            PDG id of the reference particle.
+
+        Returns
+        -------
+        q0 : float
+            Charge of the beam particle implied by its PDG id.
+        """
+        if pdg_id == 0:
+            raise ValueError(
+                "The reference particle has no PDG id set. The beam-gas "
+                "models need to know whether the beam is made of electrons "
+                "or positrons.")
+        if pdg_id not in (PDG_ID_ELECTRON, PDG_ID_POSITRON):
+            raise ValueError(
+                "The beam-gas models implemented in Xcoll are only valid for "
+                "electron, positron and proton beams, but the reference "
+                f"particle is a {pdg.get_name_from_pdg_id(pdg_id)} "
+                f"(PDG id {pdg_id}).")
+
+        # q0 sets the sign of the McKinley-Feshbach interference term, so it
+        # must agree with the PDG id rather than be trusted blindly
+        q0_from_pdg = -1.0 if pdg_id == PDG_ID_ELECTRON else 1.0
+        if not np.isclose(float(particle_ref.q0), q0_from_pdg):
+            raise ValueError(
+                f"The reference particle is a "
+                f"{pdg.get_name_from_pdg_id(pdg_id)} (PDG id {pdg_id}), which "
+                f"must have q0={q0_from_pdg:+.0f}, but it has "
+                f"q0={float(particle_ref.q0):+g}.")
+        return q0_from_pdg
+
+    def _resolve_study_process(self, process):
+        """
+        Validate the process of the study.
+
+        Parameters
+        ----------
+        process : str
+            Name of the process.
+
+        Returns
+        -------
+        process : str
+            Normalised process name.
+        """
+        return _resolve_process(process)
+
     def _resolve_elements(self, elements):
         """
         Resolve and validate the beam-gas scattering elements of the study.
@@ -529,6 +679,21 @@ class BeamGasStudy:
         return {kk: CoulombScatteringCalculator(
                     Z, self.p0c, q0=self.q0, theta_lim=self.coulomb_theta)
                 for kk, Z in self.atomic_numbers.items()}
+
+    def _compute_xsecs(self):
+        """
+        Compute the generated cross section of each gas species.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        xsecs : dict
+            Mapping ``{element_symbol: cross section [m^2]}``.
+        """
+        return {kk: cc.compute_xsec() for kk, cc in self.calculators.items()}
 
     # ######################################################## #
     # Rates
@@ -665,7 +830,15 @@ class BeamGasStudy:
 
         s_all = np.array([float(tab['s', nn]) for nn in self.elements])
         line_length = float(line.get_length())
-        if s_all[-1] < line_length - 1e-6:
+        # Only warn if a noticeable amount of gas lies beyond the last
+        # element: a study limited to a target region, with perfect vacuum
+        # elsewhere, needs no scattering element outside of it
+        uncovered = sum(self._integrated_atomic_densities(
+            s_all[-1], line_length).values())
+        covered = sum(self._integrated_atomic_densities(
+            0.0, s_all[-1]).values())
+        if (s_all[-1] < line_length - 1e-6
+                and uncovered > 1e-3*(covered + uncovered)):
             warn(f"The last BeamGasScattering is at s={s_all[-1]:.6g} m, but "
                  f"the line is {line_length:.6g} m long: the last "
                  f"{line_length - s_all[-1]:.6g} m of the line are not "
@@ -964,51 +1137,11 @@ class BeamGasStudy:
         table : xtrack.Table
             See :attr:`BeamGasResult.cutoff_scan`.
         """
-        lo, hi = self._generation_window
-        n_bins = max(int(np.ceil(
-            self._CUTOFF_SCAN_BINS_PER_DECADE*np.log10(hi/lo))), 1)
-        edges = np.geomspace(lo, hi, n_bins + 1)
-        i_bin = np.clip(np.searchsorted(edges, x, side='right') - 1,
-                        0, n_bins - 1)
-        contribution = weight*lost
-        n_elements = len(self.elements)
-
-        def per_bin(values, element_wise=False):
-            if not element_wise:
-                return np.bincount(i_bin, weights=values, minlength=n_bins)
-            flat = np.bincount(i_element*n_bins + i_bin, weights=values,
-                               minlength=n_elements*n_bins)
-            return flat.reshape(n_elements, n_bins)
-
-        def above(binned):
-            # Sum over all the bins from the current one upwards
-            return np.flip(np.cumsum(np.flip(binned, axis=-1), axis=-1),
-                           axis=-1)
-
-        num_events = per_bin(np.ones_like(x))
-        weight_in_bin = per_bin(weight)
-        with np.errstate(invalid='ignore', divide='ignore'):
-            loss_probability = per_bin(contribution)/weight_in_bin
-
-        s1 = above(per_bin(contribution, element_wise=True))
-        s2 = above(per_bin(contribution**2, element_wise=True))
-        n = np.bincount(i_element, minlength=n_elements)[:, None]
-        with np.errstate(invalid='ignore', divide='ignore'):
-            variance = np.where(n > 1, n*(s2 - s1**2/n)/(n - 1), 0.0)
-        rate = s1.sum(axis=0)
-        with np.errstate(divide='ignore'):
-            lifetime = np.where(rate > 0, self.bunch_intensity/rate, np.inf)
-
-        return xt.Table({
-            'cut': edges[:-1],
-            'num_events': num_events.astype(int),
-            'num_lost': per_bin(lost.astype(float)).astype(int),
-            'loss_probability': loss_probability,
-            'rate_tracking': rate,
-            'rate_tracking_error': np.sqrt(np.maximum(variance, 0.0)
-                                           .sum(axis=0)),
-            'lifetime_tracking': lifetime,
-        }, index='cut')
+        return _cutoff_scan_table(
+            x, weight, lost, i_element, n_strata=len(self.elements),
+            window=self._generation_window,
+            bins_per_decade=self._CUTOFF_SCAN_BINS_PER_DECADE,
+            bunch_intensity=self.bunch_intensity)
 
     def _rate_above_theta_max(self):
         """

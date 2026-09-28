@@ -14,4 +14,6 @@ from .proton_cross_sections import (ProtonNucleusCrossSections,
                                     ProtonDiffractionCalculator,
                                     ProtonKnockOnCalculator,
                                     ProtonScatteringSample)
+from .gas import parse_molecule, molecular_to_atomic_density
 from .study import BeamGasResult, BeamGasStudy
+from .proton_study import ProtonBeamGasStudy

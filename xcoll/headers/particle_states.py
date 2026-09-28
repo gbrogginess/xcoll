@@ -15,6 +15,8 @@ class XcollParticleStates(Constants):
     LOST_ON_MATERIAL        = constant(-330, "Primary loss in an Xcoll material element (block, collimator, crystal).")
     LOST_ON_MATERIAL_SEC    = constant(-331, "Secondary loss in an Xcoll material element (block, collimator, crystal).")
 
+    LOST_ON_BEAMGAS         = constant(-340, "Primary loss in an inelastic interaction with the residual gas (beam-gas absorption).")
+
     VIRTUAL_ENERGY          = constant(-350, "Primary loss: Not a real particle: Virtual energy deposition.")
     VIRTUAL_ENERGY_SEC      = constant(-351, "Secondary loss: Not a real particle: Virtual energy deposition.")
     MASSLESS_OR_NEUTRAL     = constant(-352, "Secondary loss: Massless or neutral particle.")

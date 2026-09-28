@@ -4,11 +4,13 @@
 # ######################################### #
 
 import numpy as np
+from scipy import constants as sc
 
 import xobjects as xo
 import xtrack as xt
 
 from ..general import _pkg_root
+from ..headers.particle_states import LOST_ON_BEAMGAS
 
 
 BEAMGAS_PROCESSES = ('brems', 'coulomb')
@@ -175,6 +177,20 @@ class BeamGasScattering(xt.BeamElement):
     interaction* scheme is the correct estimator in the single-scattering
     regime of a dilute residual gas, where the real probability of
     interacting in one turn is many orders of magnitude below one.
+
+    **Proton beams**
+
+    When configured by a proton study
+    (:class:`xcoll.beamgas.proton_study.ProtonBeamGasStudy`), ``process`` is
+    a tuple of processes and the sample is stratified by process: for each
+    process, ``n_events[process]`` macro-particles are generated and
+    weighted with the interaction rate of that process in the represented
+    section. The longitudinal distribution is truncated at the separatrix of
+    the RF bucket, and absorbed protons are created lost at the element with
+    the state ``LOST_ON_BEAMGAS``. ``scatter_log`` then has the columns
+    ``particle_id``, ``gas``, ``process``, ``theta``, ``t``,
+    ``energy_loss``, ``mass_x2``, ``coulomb_fraction``, ``weight`` and
+    ``absorbed``.
     """
 
     _xofields = {
@@ -271,6 +287,12 @@ class BeamGasScattering(xt.BeamElement):
         # Filled in by BeamGasStudy.initialise_beamgas()
         self._calculators = {}
         self._xsecs = {}
+        # Proton beams only: per-process cross sections, rates and numbers
+        # of events, filled in by ProtonBeamGasStudy.initialise_beamgas()
+        self._process_xsecs = {}
+        self._process_rates = {}
+        self._n_events = {}
+        self._rf_bucket = None
         self.scatter_log = None
 
     @property
@@ -284,8 +306,9 @@ class BeamGasScattering(xt.BeamElement):
 
         Returns
         -------
-        process : {'brems', 'coulomb'}
-            Name of the configured process.
+        process : {'brems', 'coulomb'} or tuple of str
+            Name of the configured process, or the tuple of the processes
+            generated for a proton beam.
         """
         return self._process
 
@@ -296,14 +319,27 @@ class BeamGasScattering(xt.BeamElement):
 
         Parameters
         ----------
-        value : {'brems', 'coulomb'}
-            Name of the process.
+        value : {'brems', 'coulomb'} or tuple of str
+            Name of the process, or, for a proton beam, the tuple of the
+            processes validated by :class:`xcoll.BeamGasStudy`.
 
         Returns
         -------
         None
         """
+        if isinstance(value, tuple):
+            if len(value) == 0 or not all(isinstance(vv, str)
+                                          for vv in value):
+                raise ValueError("The proton processes must be a non-empty "
+                                 "tuple of process names.")
+            self._process = value
+            return
         self._process = _resolve_process(value)
+
+    @property
+    def _is_proton(self):
+        """Whether the element is configured for a proton beam."""
+        return isinstance(self._process, tuple)
 
     @property
     def gas_species(self):
@@ -397,6 +433,7 @@ class BeamGasScattering(xt.BeamElement):
             'n_scattering_events', 'interaction_rate',
             'process', 'atomic_densities',
             '_calculators', '_xsecs',
+            '_process_xsecs', '_process_rates', '_n_events', '_rf_bucket',
         }
 
         unknown = set(kwargs) - config_allowed
@@ -491,6 +528,9 @@ class BeamGasScattering(xt.BeamElement):
 
         self._check_initialised()
 
+        if self._is_proton:
+            return self._scatter_protons(rng)
+
         n = int(self.n_scattering_events)
         if n <= 0:
             raise ValueError(
@@ -552,6 +592,163 @@ class BeamGasScattering(xt.BeamElement):
             'weight': weight,
         }
 
+        return particles
+
+    def _generate_primaries_in_bucket(self, n, rng):
+        """
+        Draw macro-particles from the local matched distribution, truncated
+        at the separatrix of the RF bucket.
+
+        The Gaussian longitudinal distribution has tails outside the RF
+        bucket, which a real bunch does not have and which would be
+        mistaken for protons pushed out of the bucket by the interaction.
+        The particles outside the stationary bucket (see
+        :attr:`_rf_bucket`) are therefore redrawn. Without RF information
+        this is :meth:`_generate_primaries`.
+
+        Parameters
+        ----------
+        n : int
+            Number of macro-particles to generate.
+        rng : numpy.random.Generator
+            Random number generator.
+
+        Returns
+        -------
+        x, px, y, py, zeta, delta : ndarray
+            Physical coordinates of the generated macro-particles.
+        """
+        coords = self._generate_primaries(n, rng)
+        bucket = getattr(self, '_rf_bucket', None)
+        if bucket is None:
+            return coords
+        delta_max, f_rf, beta0 = bucket
+        coords = [np.array(cc) for cc in coords]
+
+        def outside(zeta, delta):
+            phi = 2*np.pi*f_rf*(zeta - self.zeta_co)/(beta0*sc.c)
+            return (((delta - self.delta_co)/delta_max)**2
+                    + np.sin(0.5*phi)**2) > 1.0
+
+        redraw = outside(coords[4], coords[5])
+        for _ in range(100):
+            if not redraw.any():
+                return tuple(coords)
+            new = self._generate_primaries(int(redraw.sum()), rng)
+            for cc, nn in zip(coords, new):
+                cc[redraw] = nn
+            redraw[redraw] = outside(new[4], new[5])
+        raise RuntimeError("Could not draw the macro-particles inside the "
+                           "RF bucket: the bunch is much longer than the "
+                           "bucket.")
+
+    # Per-event quantities logged for proton beams, see
+    # xcoll.beamgas.ProtonScatteringSample
+    _PROTON_LOG_COLUMNS = ('theta', 't', 'energy_loss', 'mass_x2',
+                           'coulomb_fraction', 'weight')
+
+    def _scatter_protons(self, rng):
+        """
+        Generate weighted proton-gas interactions, stratified by process.
+
+        For each process, ``n_events`` macro-particles are drawn from the
+        local matched distribution and assigned a gas species with a
+        probability proportional to its contribution to the rate of that
+        process. The weight of each event is the process interaction rate of
+        the represented section divided by the number of its events, times
+        the importance weight of the event. Absorbed protons are flagged as
+        lost at the element, with state ``LOST_ON_BEAMGAS``.
+
+        Parameters
+        ----------
+        rng : numpy.random.Generator
+            Random number generator.
+
+        Returns
+        -------
+        particles : xtrack.Particles
+            Macro-particles that have undergone one proton-gas interaction.
+        """
+        species = self.gas_species
+        coords = {kk: [] for kk in ('x', 'px', 'y', 'py', 'zeta', 'delta')}
+        log = {kk: [] for kk in self._PROTON_LOG_COLUMNS
+               + ('gas', 'process', 'absorbed')}
+
+        for process in self._process:
+            n = int(self._n_events.get(process, 0))
+            rate = float(self._process_rates.get(process, 0.0))
+            if n <= 0 or rate <= 0.0:
+                continue
+            x, px, y, py, zeta, delta = \
+                self._generate_primaries_in_bucket(n, rng)
+
+            xsecs = self._process_xsecs[process]
+            contributions = np.array(
+                [self.atomic_densities[kk]*xsecs[kk] for kk in species],
+                dtype=float)
+            i_species = rng.choice(len(species), size=n,
+                                   p=contributions/contributions.sum())
+
+            values = {kk: np.full(n, np.nan) for kk in self._PROTON_LOG_COLUMNS}
+            absorbed = np.zeros(n, dtype=bool)
+            # Object array on purpose, see scatter()
+            gas = np.empty(n, dtype=object)
+            for ii, kk in enumerate(species):
+                mask = i_species == ii
+                if not mask.any():
+                    continue
+                sample = self._calculators[process][kk].sample_deflections(
+                    px[mask], py[mask], delta[mask], rng)
+                px[mask] = sample.px
+                py[mask] = sample.py
+                delta[mask] = sample.delta
+                for cc in self._PROTON_LOG_COLUMNS:
+                    values[cc][mask] = getattr(sample, cc)
+                absorbed[mask] = sample.absorbed
+                gas[mask] = kk
+            values['weight'] *= rate/n
+
+            for kk, vv in zip(('x', 'px', 'y', 'py', 'zeta', 'delta'),
+                              (x, px, y, py, zeta, delta)):
+                coords[kk].append(vv)
+            for cc in self._PROTON_LOG_COLUMNS:
+                log[cc].append(values[cc])
+            log['absorbed'].append(absorbed)
+            log['gas'].append(gas)
+            process_col = np.empty(n, dtype=object)
+            process_col[:] = process
+            log['process'].append(process_col)
+
+        if not coords['x']:
+            raise ValueError(
+                f"No proton-gas interactions to generate at element "
+                f"'{getattr(self, 'name', '?')}': all the process rates or "
+                f"numbers of events are zero.")
+
+        coords = {kk: np.concatenate(vv) for kk, vv in coords.items()}
+        log = {kk: np.concatenate(vv) for kk, vv in log.items()}
+        n_total = coords['x'].size
+        state = np.where(log['absorbed'], int(LOST_ON_BEAMGAS), 1)
+        # The ids are given explicitly because xtrack moves the particles
+        # created as lost (the absorbed ones) to the end of the arrays
+        particle_id = np.arange(n_total)
+
+        # Leave room for the secondaries that collimators may produce
+        particles = xt.Particles(
+            _capacity=4*n_total,
+            p0c=self.p0c,
+            mass0=self.particle_ref.mass0,
+            q0=self.particle_ref.q0,
+            pdg_id=self.particle_ref.pdg_id,
+            weight=log['weight'],
+            s=self.s,
+            state=state,
+            particle_id=particle_id,
+            **coords,
+        )
+        particles.at_element = self.element_index
+
+        self.scatter_log = {'particle_id': particle_id, **log}
         return particles
 
     def track(self, particles):

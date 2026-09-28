@@ -57,7 +57,7 @@ class XcollLineAPI:
         """
         return self._collimators
 
-    def beamgas_configure(self, *, gas_density, process='brems',
+    def beamgas_configure(self, *, gas_density, process=None,
                           elements=None, twiss=None, verbose=True, **kwargs):
         """
         Configure the beam-gas scattering elements in the line.
@@ -75,8 +75,11 @@ class XcollLineAPI:
             Residual-gas density profile, with a column ``s`` and one column
             per gas species named after its chemical symbol, holding the
             *atomic* density [atoms/m^3].
-        process : {'brems', 'coulomb'}, optional
-            Beam-gas process to simulate. Default ``'brems'``.
+        process : str or sequence of str, optional
+            Beam-gas process(es) to simulate. If ``None`` (default), the
+            default of the study is used: ``'brems'`` for electron and
+            positron beams, ``'all'`` for proton beams (see
+            :class:`xcoll.beamgas.proton_study.ProtonBeamGasStudy`).
         elements : str, sequence of str, or None, optional
             Beam-gas scattering elements included in the study. If ``None``,
             all :class:`xcoll.BeamGasScattering` elements in the line are used.
@@ -96,10 +99,11 @@ class XcollLineAPI:
         study : xcoll.BeamGasStudy
             Configured and initialised beam-gas study.
         """
+        if process is not None:
+            kwargs['process'] = process
         study = BeamGasStudy(
             line=self.line,
             gas_density=gas_density,
-            process=process,
             elements=elements,
             twiss=twiss,
             **kwargs,
