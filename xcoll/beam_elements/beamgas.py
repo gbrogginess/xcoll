@@ -747,6 +747,11 @@ class BeamGasScattering(xt.BeamElement):
             **coords,
         )
         particles.at_element = self.element_index
+        # Seed the per-particle random generators (used e.g. by the Everest
+        # collimators) from the study generator, for reproducibility
+        particles._init_random_number_generator(
+            seeds=rng.integers(1, 4_000_000_000, size=particles._capacity,
+                               dtype=np.uint32))
 
         self.scatter_log = {'particle_id': particle_id, **log}
         return particles

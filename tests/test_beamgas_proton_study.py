@@ -192,6 +192,18 @@ class TestConstruction:
         with pytest.raises(ValueError, match='not in the gas'):
             _study(*ring, sd_scale={'Ar': 0.1})
 
+    def test_reproducible_with_seed(self, ring):
+        # Including the per-particle random generators, used for instance
+        # by the Everest collimators
+        a = _study(*ring, seed=5).generate_particles()
+        b = _study(*ring, seed=5).generate_particles()
+        c = _study(*ring, seed=6).generate_particles()
+        for nn in a:
+            for field in ('x', 'px', 'delta', 'weight', '_rng_s1', '_rng_s4'):
+                assert np.array_equal(getattr(a[nn], field),
+                                      getattr(b[nn], field))
+            assert not np.array_equal(a[nn]._rng_s1, c[nn]._rng_s1)
+
     def test_line_facade(self, ring):
         study = ring[0].xcoll.beamgas_configure(
             gas_density=ring[1], nemitt_x=NEMITT, nemitt_y=NEMITT,
