@@ -189,12 +189,14 @@ class Geant4Engine(BaseEngine):
                 xOffset = xOffset_temp
             tip_material = el.tip_material.geant4_name if isinstance(el, Geant4CollimatorTip) else ''
             tip_thickness = el.tip_thickness if isinstance(el, Geant4CollimatorTip) else 0
+            taper_angle = el.taper_angle if isinstance(el, Geant4CollimatorTip) else 0
             self._g4link.addCollimator(f'{el.geant4_id}', el.material.geant4_name,
                                        tip_material, tip_thickness, el.length,
                                        apertureLeft=jaw_L, apertureRight=-jaw_R,
                                        rotation=np.deg2rad(el.angle),
                                        xOffset=xOffset, yOffset=yOffset, side=side,
                                        jawTiltLeft=tilt_L, jawTiltRight=tilt_R,
+                                       taperAngle=taper_angle,
                                        isACrystal=isinstance(el, BaseCrystal))
         self._already_started = True
 
@@ -269,6 +271,11 @@ class Geant4Engine(BaseEngine):
                     self._print(f"Warning: Tip thickness of {name} differs from input file "
                             + f"({ee.tip_thickness} vs {input_dict[name]['tip_thickness']})! Overwritten.")
                     ee.tip_thickness = input_dict[name]['tip_thickness']
+                taper_angle = input_dict[name].get('taper_angle', 0)
+                if not np.isclose(ee.taper_angle, taper_angle, atol=1e-9):
+                    self._print(f"Warning: Taper angle of {name} differs from input file "
+                            + f"({ee.taper_angle} vs {taper_angle})! Overwritten.")
+                    ee.taper_angle = taper_angle
             jaw = input_dict[name]['jaw']
             if jaw is not None and not hasattr(jaw, '__iter__'):
                 jaw = [jaw, -jaw]
