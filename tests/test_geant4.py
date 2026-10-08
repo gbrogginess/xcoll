@@ -163,12 +163,9 @@ def test_geant4_tip_taper():
     # less material with a taper than with the default flat jaw, and so
     # survives far more often - this is what is checked below.
     #
-    # Note: BDSIM's link API (the one xcoll uses) currently hard-codes
-    # horizontalWidth=2m for the Geant4 physics geometry, so the taper's
-    # depth range is set by that (~1m), not by the real aperture - a shallow
-    # (SAD-like, ~12 degree) taper angle would need an unrealistically long
-    # collimator to stay valid. A steep angle is used here instead, only to
-    # exercise the geometry; see the project notes for the realistic case.
+    # Without jaw_depth the Geant4 jaw spans BDSIM's default 2 m wide box, so
+    # the taper runs over ~1 m and only a steep angle leaves a tip at a
+    # realistic length; see test_geant4_tip_taper_jaw_depth for a realistic jaw.
     if xc.geant4.engine.is_running():
         xc.geant4.engine.stop()
 
@@ -206,5 +203,53 @@ def test_geant4_tip_taper():
     assert survived_flat < 0.05*n_part        # thick flat tip: (almost) full absorption
     assert survived_tapered > 0.05*n_part     # short tapered tip: a clear fraction gets through
     assert survived_tapered > survived_flat
+
+    xc.geant4.engine.stop(clean=True)
+
+
+@pytest.mark.geant4
+def test_geant4_tip_taper_jaw_depth():
+    # SuperKEKB-like jaw as modelled in SAD: a 12 degree wedge over the first
+    # 37 mm of the jaw, 358 mm long at that depth and ~10 mm long at the beam.
+    # The jaws are deliberately not centred on the beam, to exercise the
+    # re-centring that gives both jaws the same depth.
+    if xc.geant4.engine.is_running():
+        xc.geant4.engine.stop()
+
+    length = 0.358
+    jaw = [0.0080, -0.0076]
+    jaw_depth = 0.037
+    tip_thickness = 0.005
+    n_part = 400
+    kwargs = dict(length=length, jaw=jaw, material=xc.materials.Copper,
+                  tip_material=xc.materials.Tungsten, tip_thickness=tip_thickness,
+                  jaw_depth=jaw_depth)
+
+    flat = xc.Geant4CollimatorTip(**kwargs)
+    tapered = xc.Geant4CollimatorTip(**kwargs, taper_angle_deg=12)
+    tip_length = length - 2*jaw_depth/np.tan(tapered.taper_angle)
+    assert np.isclose(tip_length, 0.00987, atol=1e-5)
+
+    xc.geant4.engine.particle_ref = particle_ref
+    xc.geant4.engine.start(elements=[flat, tapered], seed=1993)
+
+    def survivors(coll, depth):
+        part = xp.build_particles(x=np.full(n_part, jaw[0] + depth), y=np.zeros(n_part),
+                                  px=np.zeros(n_part), py=np.zeros(n_part),
+                                  particle_ref=xc.geant4.engine.particle_ref,
+                                  _capacity=n_part*4)
+        coll.track(part)
+        return int((part.state == 1).sum())
+
+    # 2 mm deep: ~29 mm of tungsten through the wedge, 358 mm through the flat jaw
+    # 30 mm deep: ~292 mm of copper through the wedge
+    flat_shallow = survivors(flat, 0.002)
+    tapered_shallow = survivors(tapered, 0.002)
+    tapered_deep = survivors(tapered, 0.030)
+    print(f"Survivors out of {n_part}: flat 2 mm deep {flat_shallow}, "
+          f"tapered 2 mm deep {tapered_shallow}, tapered 30 mm deep {tapered_deep}")
+    assert flat_shallow < 0.05*n_part
+    assert tapered_deep < 0.05*n_part
+    assert tapered_shallow > 0.25*n_part
 
     xc.geant4.engine.stop(clean=True)
