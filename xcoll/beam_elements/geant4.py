@@ -3,6 +3,7 @@
 # Copyright (c) CERN, 2025.                 #
 # ######################################### #
 
+import numpy as np
 import xobjects as xo
 import xtrack as xt
 
@@ -120,7 +121,8 @@ class Geant4Collimator(BaseCollimator):
 @track_construction
 class Geant4CollimatorTip(Geant4Collimator):
     _xofields = Geant4Collimator._xofields | {
-        'tip_thickness': xo.Float64
+        'tip_thickness': xo.Float64,
+        'taper_angle': xo.Float64   # rad; 0 (default) means a flat (untapered) jaw, as before
     }
 
     isthick = True
@@ -150,6 +152,16 @@ class Geant4CollimatorTip(Geant4Collimator):
         if '_xobject' not in kwargs:
             to_assign['tip_material'] = kwargs.pop('tip_material', None)
             kwargs['_tip_material'] = _DEFAULT_MATERIAL
+            taper_angle_deg = kwargs.pop('taper_angle_deg', None)
+            taper_angle_rad = kwargs.pop('taper_angle_rad', None)
+            if taper_angle_deg is not None and taper_angle_rad is not None:
+                raise ValueError("Use only one of `taper_angle_deg` or "
+                                + "`taper_angle_rad`, not both.")
+            elif taper_angle_deg is not None:
+                kwargs['taper_angle'] = np.deg2rad(taper_angle_deg)
+            elif taper_angle_rad is not None:
+                kwargs['taper_angle'] = taper_angle_rad
+            kwargs.setdefault('taper_angle', 0)
         super().__init__(**kwargs)
         for key, val in to_assign.items():
             setattr(self, key, val)
