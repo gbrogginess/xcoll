@@ -4,6 +4,7 @@
 # ######################################### #
 
 import os
+import re
 import requests
 from subprocess import run
 
@@ -177,44 +178,65 @@ class Geant4Interface(BaseInterface):
         return n_ver < n_ver_cmp
 
 
+    # Trailing-comment version gates recognised per line, e.g.:
+    #   foo(a, b);              // BDSIM >= 1.7.7.develop
+    #   bar);                   // BDSIM >= 1.7.7.develop BDSIM < 1.8.0.develop
+    # A line may carry any number of these (lower and/or upper bound); all of
+    # them must hold for the line to be kept, so combining a '>=' and a '<'
+    # marker on one line expresses "only for versions in this range" - needed
+    # whenever a later marker (e.g. 1.8.0.develop) adds to a call already
+    # gated by an earlier one (e.g. 1.7.7.develop), to avoid the earlier gate's
+    # line surviving on its own (with a now-invalid trailing comma/punctuation)
+    # for a version new enough for the earlier gate but too old for the later one.
+    # Not anchored on '//' for every match: a line's single trailing comment
+    # can hold more than one marker (see the note above), so only the first
+    # one needs the literal '//' that starts the comment - this pattern only
+    # ever matches inside such a comment in practice.
+    _version_gate_re = re.compile(r'\bBDSIM\s*(>=|<)\s*([\w.]+)')
+
+    def _filter_version_gated_lines(self, filedata, bdsim_version):
+        new_filedata = []
+        adapted = False
+        for line in filedata.split('\n'):
+            matches = self._version_gate_re.findall(line)
+            if matches:
+                keep = True
+                for op, compare_version in matches:
+                    older = self.bdsim_older_than(bdsim_version, compare_version)
+                    keep &= (not older) if op == '>=' else older
+                if not keep:
+                    adapted = True
+                    continue
+            new_filedata.append(line)
+        return new_filedata, adapted
+
     def _adapt_source_to_bdsim_version(self, bdsim_version, verbose):
-        version_mark = '// BDSIM >= '
         adapted_any = False
 
         # Adapt BDSXtrackInterface.hh
-        adapted = False
         with open('BDSXtrackInterface.hh', 'r') as file:
             filedata = file.read()
+        adapted = False
         if self.bdsim_older_than(bdsim_version, '1.7.7.develop'):
             filedata = filedata.replace('#include "BDSLinkBunch.hh"', '#include "BDSBunchSixTrackLink.hh"')
             filedata = filedata.replace('BDSLinkBunch* stp = nullptr;', 'BDSBunchSixTrackLink* stp = nullptr;')
             adapted = True
-        new_filedata = []
-        for line in filedata.split('\n'):
-            if version_mark in line:
-                if self.bdsim_older_than(bdsim_version, line.split(version_mark)[1]):
-                    adapted = True
-                    continue
-            new_filedata.append(line)
+        new_filedata, filtered = self._filter_version_gated_lines(filedata, bdsim_version)
+        adapted |= filtered
         if adapted:
             adapted_any = True
             with open('BDSXtrackInterface.hh', 'w') as file:
                 file.write('\n'.join(new_filedata))
 
         # Adapt BDSXtrackInterface.cpp
-        adapted = False
         with open('BDSXtrackInterface.cpp', 'r') as file:
             filedata = file.read()
+        adapted = False
         if self.bdsim_older_than(bdsim_version, '1.7.7.develop'):
             filedata = filedata.replace('stp = new BDSLinkBunch();', 'stp = new BDSBunchSixTrackLink();')
             adapted = True
-        new_filedata = []
-        for line in filedata.split('\n'):
-            if version_mark in line:
-                if self.bdsim_older_than(bdsim_version, line.split(version_mark)[1]):
-                    adapted = True
-                    continue
-            new_filedata.append(line)
+        new_filedata, filtered = self._filter_version_gated_lines(filedata, bdsim_version)
+        adapted |= filtered
         if adapted:
             adapted_any = True
             with open('BDSXtrackInterface.cpp', 'w') as file:
