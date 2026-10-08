@@ -122,7 +122,9 @@ class Geant4Collimator(BaseCollimator):
 class Geant4CollimatorTip(Geant4Collimator):
     _xofields = Geant4Collimator._xofields | {
         'tip_thickness': xo.Float64,
-        'taper_angle': xo.Float64   # rad; 0 (default) means a flat (untapered) jaw, as before
+        'taper_angle': xo.Float64,  # rad; 0 (default) means a flat (untapered) jaw, as before
+        'jaw_depth': xo.Float64     # m, transverse depth of each jaw from its edge (the taper
+                                    # spans this); 0 (default) means a 2 m wide Geant4 box, as before
     }
 
     isthick = True
