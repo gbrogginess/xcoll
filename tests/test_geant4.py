@@ -151,3 +151,60 @@ def test_black_absorbers(test_context):
 
     # Stop the Geant4 connection
     xc.geant4.engine.stop(clean=True)
+
+
+@pytest.mark.geant4
+def test_geant4_tip_taper():
+    # The jaw of a Geant4CollimatorTip is built as a wedge (G4Trd) when
+    # taper_angle is set: the material thickness along the beam grows with
+    # depth beyond the jaw edge, from a short tip near the gap to the full
+    # collimator length at the jaw's outer edge (see BDSCollimatorJaw in
+    # BDSIM). A particle entering shallow in the jaw therefore crosses much
+    # less material with a taper than with the default flat jaw, and so
+    # survives far more often - this is what is checked below.
+    #
+    # Note: BDSIM's link API (the one xcoll uses) currently hard-codes
+    # horizontalWidth=2m for the Geant4 physics geometry, so the taper's
+    # depth range is set by that (~1m), not by the real aperture - a shallow
+    # (SAD-like, ~12 degree) taper angle would need an unrealistically long
+    # collimator to stay valid. A steep angle is used here instead, only to
+    # exercise the geometry; see the project notes for the realistic case.
+    if xc.geant4.engine.is_running():
+        xc.geant4.engine.stop()
+
+    length = 0.6
+    jaw_gap = 0.001       # m, half gap
+    tip_thickness = 0.01  # m
+    n_part = 400
+
+    flat = xc.Geant4CollimatorTip(length=length, jaw=[jaw_gap, -jaw_gap],
+                                  material=xc.materials.Iron, tip_material=xc.materials.Tungsten,
+                                  tip_thickness=tip_thickness)
+    tapered = xc.Geant4CollimatorTip(length=length, jaw=[jaw_gap, -jaw_gap],
+                                     material=xc.materials.Iron, tip_material=xc.materials.Tungsten,
+                                     tip_thickness=tip_thickness, taper_angle_deg=80)
+    assert flat.taper_angle == 0
+    assert np.isclose(tapered.taper_angle, np.deg2rad(80))
+
+    xc.geant4.engine.particle_ref = particle_ref
+    xc.geant4.engine.start(elements=[flat, tapered], seed=1993)
+
+    # Particles entering shallow in the jaw, well within tip_thickness
+    x = np.full(n_part, jaw_gap + 0.2*tip_thickness)
+    part_init = xp.build_particles(x=x, y=np.zeros(n_part), px=np.zeros(n_part), py=np.zeros(n_part),
+                                   particle_ref=xc.geant4.engine.particle_ref, _capacity=n_part*4)
+
+    part_flat = part_init.copy()
+    part_tapered = part_init.copy()
+    flat.track(part_flat)
+    tapered.track(part_tapered)
+
+    survived_flat = int((part_flat.state == 1).sum())
+    survived_tapered = int((part_tapered.state == 1).sum())
+    print(f"Shallow hits surviving: flat {survived_flat}/{n_part}, "
+          f"tapered {survived_tapered}/{n_part}")
+    assert survived_flat < 0.05*n_part        # thick flat tip: (almost) full absorption
+    assert survived_tapered > 0.05*n_part     # short tapered tip: a clear fraction gets through
+    assert survived_tapered > survived_flat
+
+    xc.geant4.engine.stop(clean=True)

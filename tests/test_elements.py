@@ -305,7 +305,8 @@ geant4_user_fields_read_only = base_coll_user_fields_read_only
 
 # Geant4CollimatorTip
 geant4_tip_fields = {**geant4_fields,
-    'tip_thickness':         0.05
+    'tip_thickness':         0.05,
+    'taper_angle':           0.15
 }
 geant4_tip_dict_fields =  [*geant4_dict_fields,
     {'field': 'tip_material', 'val': xc.materials.Manganese, 'expected': {'_tip_material': xc.materials.Manganese}}
@@ -420,6 +421,32 @@ def test_geant4_tip():
                                   tip_thickness=0.02, tip_material=xc.materials.Boron)
     _check_all_elements(elem, geant4_tip_fields, geant4_tip_dict_fields,
                         geant4_tip_user_fields, geant4_tip_user_fields_read_only)
+
+
+@pytest.mark.geant4
+def test_geant4_tip_taper_angle():
+    # Default: no taper
+    elem = xc.Geant4CollimatorTip(length=1, material=xc.materials.CarbonFibreComposite,
+                                  tip_thickness=0.02, tip_material=xc.materials.Boron)
+    assert elem.taper_angle == 0
+
+    # taper_angle_deg
+    elem = xc.Geant4CollimatorTip(length=1, material=xc.materials.CarbonFibreComposite,
+                                  tip_thickness=0.02, tip_material=xc.materials.Boron,
+                                  taper_angle_deg=12)
+    assert np.isclose(elem.taper_angle, np.deg2rad(12))
+
+    # taper_angle_rad
+    elem = xc.Geant4CollimatorTip(length=1, material=xc.materials.CarbonFibreComposite,
+                                  tip_thickness=0.02, tip_material=xc.materials.Boron,
+                                  taper_angle_rad=0.15)
+    assert np.isclose(elem.taper_angle, 0.15)
+
+    # Setting both should raise
+    with pytest.raises(ValueError):
+        xc.Geant4CollimatorTip(length=1, material=xc.materials.CarbonFibreComposite,
+                               tip_thickness=0.02, tip_material=xc.materials.Boron,
+                               taper_angle_deg=12, taper_angle_rad=0.15)
 
 
 def _assert_all_close(expected, setval):
