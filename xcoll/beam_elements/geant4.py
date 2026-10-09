@@ -127,8 +127,10 @@ class Geant4CollimatorTip(Geant4Collimator):
                                     # jaws are longer than the element (see taper_extension)
         'jaw_depth': xo.Float64,    # m, transverse depth of each jaw from its edge; 0 (default)
                                     # means a 2 m wide Geant4 box, as before
-        'taper_depth': xo.Float64   # m, depth from the jaw edge where the taper ends, the jaw keeping
+        'taper_depth': xo.Float64,  # m, depth from the jaw edge where the taper ends, the jaw keeping
                                     # a constant length beyond it; 0 (default) tapers the whole jaw
+        'jaw_width': xo.Float64     # m, full width of each jaw across its plane of motion; 0 (default)
+                                    # means BDSIM's default of 12 mm
     }
 
     isthick = True

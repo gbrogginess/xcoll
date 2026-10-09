@@ -191,12 +191,14 @@ class Geant4Engine(BaseEngine):
             tip_thickness = 0
             taper_angle = 0
             taper_depth = 0
+            jaw_half_height = 0
             horizontal_width = 0
             if isinstance(el, Geant4CollimatorTip):
                 tip_material = el.tip_material.geant4_name
                 tip_thickness = el.tip_thickness
                 taper_angle = el.taper_angle
                 taper_depth = el.taper_depth
+                jaw_half_height = el.jaw_width/2
                 if el.jaw_depth > 0 and side == 0 \
                 and not np.isclose(jaw_L, -jaw_R, rtol=0, atol=1e-12):
                     # Centre the jaws on the offset, so that a single horizontalWidth
@@ -221,6 +223,7 @@ class Geant4Engine(BaseEngine):
                                        taperAngle=taper_angle,
                                        horizontalWidth=horizontal_width,
                                        taperDepth=taper_depth,
+                                       jawHalfHeight=jaw_half_height,
                                        isACrystal=isinstance(el, BaseCrystal))
         self._already_started = True
 
@@ -240,6 +243,8 @@ class Geant4Engine(BaseEngine):
             half_gaps.append(-jaw_R)
         if el.jaw_depth < 0:
             raise ValueError(f"Geant4CollimatorTip {el.name}: jaw_depth cannot be negative!")
+        if el.jaw_width < 0:
+            raise ValueError(f"Geant4CollimatorTip {el.name}: jaw_width cannot be negative!")
         if el.jaw_depth > 0:
             if min(half_gaps) < 0:
                 raise ValueError(f"Geant4CollimatorTip {el.name}: jaw_depth is not supported for "
@@ -352,6 +357,11 @@ class Geant4Engine(BaseEngine):
                     self._print(f"Warning: Taper depth of {name} differs from input file "
                             + f"({ee.taper_depth} vs {taper_depth})! Overwritten.")
                     ee.taper_depth = taper_depth
+                jaw_width = input_dict[name].get('jaw_width', 0)
+                if not np.isclose(ee.jaw_width, jaw_width, atol=1e-9):
+                    self._print(f"Warning: Jaw width of {name} differs from input file "
+                            + f"({ee.jaw_width} vs {jaw_width})! Overwritten.")
+                    ee.jaw_width = jaw_width
             jaw = input_dict[name]['jaw']
             if jaw is not None and not hasattr(jaw, '__iter__'):
                 jaw = [jaw, -jaw]

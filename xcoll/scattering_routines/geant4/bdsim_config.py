@@ -126,6 +126,7 @@ def _generate_xcoll_header(element_dict):
             vv["taper_angle"]   = np.array(el.taper_angle).tolist()
             vv["jaw_depth"]     = np.array(el.jaw_depth).tolist()
             vv["taper_depth"]   = np.array(el.taper_depth).tolist()
+            vv["jaw_width"]     = np.array(el.jaw_width).tolist()
         header.append(f'!  "{kk}": ' + json.dumps(vv) + ',')
     header[-1] = header[-1][:-1]  # remove last comma
     header.append("!  }")

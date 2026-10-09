@@ -69,6 +69,7 @@ public:
                        double taperAngle,
                        double horizontalWidth,
                        double taperDepth,
+                       double jawHalfHeight,
                        int    side,
                        bool isACrystal);
 

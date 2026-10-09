@@ -22,7 +22,7 @@ def _initialise_None(dct):
     fields.update({'overwritten_keys': [], 'side': 'both', 'material': None, 'stage': None, 'assembly': None})
     fields.update({'length': 0, 'collimator_type': None, 'active': True, 'crystal': None, 'tilt': 0})
     fields.update({'bending_radius': None, 'bending_angle': None, 'width': 0, 'height': 0, 'miscut': 0})
-    fields.update({'s_center': None, 'tip_material': None, 'tip_thickness': 0, 'taper_angle': 0, 'jaw_depth': 0, 'taper_depth': 0})  # TODO: add s_start and s_end and make them sync etc
+    fields.update({'s_center': None, 'tip_material': None, 'tip_thickness': 0, 'taper_angle': 0, 'jaw_depth': 0, 'taper_depth': 0, 'jaw_width': 0})  # TODO: add s_start and s_end and make them sync etc
     for f, val in fields.items():
         if f not in dct.keys():
             dct[f] = val
@@ -591,6 +591,7 @@ class CollimatorDatabase:
             taper_angle = self[name]['taper_angle']
             jaw_depth = self[name]['jaw_depth']
             taper_depth = self[name]['taper_depth']
+            jaw_width = self[name]['jaw_width']
             if ('bending_radius' in self[name] and self[name]['bending_radius']) \
             or ('bending_angle' in self[name] and self[name]['bending_angle']):
                 raise ValueError("Geant4Crystal not yet supported!")
@@ -598,7 +599,8 @@ class CollimatorDatabase:
                 self._create_collimator(Geant4CollimatorTip, line, name, material=mat,
                                         tip_material=tip_material, tip_thickness=tip_thickness,
                                         taper_angle_rad=taper_angle, jaw_depth=jaw_depth,
-                                        taper_depth=taper_depth, verbose=verbose)
+                                        taper_depth=taper_depth, jaw_width=jaw_width,
+                                        verbose=verbose)
             else:
                 self._create_collimator(Geant4Collimator, line, name, material=mat, verbose=verbose)
         at = []
