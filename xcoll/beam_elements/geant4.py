@@ -122,7 +122,9 @@ class Geant4Collimator(BaseCollimator):
 class Geant4CollimatorTip(Geant4Collimator):
     _xofields = Geant4Collimator._xofields | {
         'tip_thickness': xo.Float64,
-        'taper_angle': xo.Float64,  # rad; 0 (default) means a flat (untapered) jaw, as before
+        'taper_angle': xo.Float64,  # rad; 0 (default) means a flat (untapered) jaw, as before. With a
+                                    # taper, length is that of the flat jaw face at the beam, and the
+                                    # jaws are longer than the element (see taper_extension)
         'jaw_depth': xo.Float64     # m, transverse depth of each jaw from its edge (the taper
                                     # spans this); 0 (default) means a 2 m wide Geant4 box, as before
     }
@@ -178,6 +180,19 @@ class Geant4CollimatorTip(Geant4Collimator):
         tip_material = _resolve_material(tip_material, ref='geant4')
         if self.tip_material != tip_material:
             self._tip_material = tip_material
+
+    @property
+    def taper_extension(self):
+        """How far a tapered jaw extends beyond each end of the element [m].
+
+        The element length is that of the flat jaw face at the beam; from there
+        each jaw grows with depth, up to length + 2*jaw_depth/tan(taper_angle)
+        at its outer edge. Geant4 tracks through that full length, centred on
+        the element, so the lattice should leave this much room on either side.
+        """
+        if self.taper_angle > 0 and self.jaw_depth > 0:
+            return self.jaw_depth / np.tan(self.taper_angle)
+        return 0.
 
 
 @track_construction

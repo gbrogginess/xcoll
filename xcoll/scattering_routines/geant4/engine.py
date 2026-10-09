@@ -226,9 +226,9 @@ class Geant4Engine(BaseEngine):
         # Returns the horizontalWidth to give BDSIM (0 means its default of 2 m).
         # As in BDSCollimatorJaw, each jaw spans from its edge out to
         # horizontalWidth/2, and a taper runs over that full depth: the jaw is
-        # `length` long at its outer edge and shortest at the beam. Whatever
-        # BDSIM would reject is checked here, as its link API does not raise
-        # but silently replaces a failing collimator by a drift.
+        # `length` long at the beam and grows with depth (see taper_extension).
+        # Whatever BDSIM would reject is checked here, as its link API does not
+        # raise but silently replaces a failing collimator by a drift.
         half_gaps = []
         if side in (0, 1):
             half_gaps.append(jaw_L)
@@ -254,14 +254,10 @@ class Geant4Engine(BaseEngine):
             if tilt_L != 0 or tilt_R != 0:
                 raise ValueError(f"Geant4CollimatorTip {el.name}: a taper cannot be combined "
                                + "with a jaw tilt!")
-            depth = max(horizontal_width/2 - gap for gap in half_gaps)
-            min_length = 2*depth/np.tan(el.taper_angle)
-            if el.length <= min_length + 1e-5:
-                raise ValueError(f"Geant4CollimatorTip {el.name}: a taper of "
-                               + f"{np.rad2deg(el.taper_angle):.2f} deg over a jaw depth of "
-                               + f"{depth*1e3:.1f} mm leaves no tip; the length must be "
-                               + f"larger than {min_length:.4f} m (got {el.length} m). "
-                               + "Reduce jaw_depth, or increase taper_angle or length.")
+            if el.jaw_depth <= 0:
+                raise ValueError(f"Geant4CollimatorTip {el.name}: a taper needs jaw_depth, "
+                               + "otherwise the wedge would span BDSIM's 2 m wide box and "
+                               + "make the jaws several metres long!")
         return horizontal_width if el.jaw_depth > 0 else 0
 
     def _stop_engine(self, **kwargs):
