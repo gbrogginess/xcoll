@@ -66,6 +66,10 @@ public:
                        double yOffsetIn,
                        double jawTiltLeft,
                        double jawTiltRight,
+                       double taperAngle,
+                       double horizontalWidth,
+                       double taperDepth,
+                       double jawHalfHeight,
                        int    side,
                        bool isACrystal);
 
