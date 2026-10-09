@@ -155,101 +155,66 @@ def test_black_absorbers(test_context):
 
 @pytest.mark.geant4
 def test_geant4_tip_taper():
-    # The jaw of a Geant4CollimatorTip is built as a wedge (G4Trd) when
-    # taper_angle is set: the material thickness along the beam grows with
-    # depth beyond the jaw edge, from a short tip near the gap to the full
-    # collimator length at the jaw's outer edge (see BDSCollimatorJaw in
-    # BDSIM). A particle entering shallow in the jaw therefore crosses much
-    # less material with a taper than with the default flat jaw, and so
-    # survives far more often - this is what is checked below.
-    #
-    # Without jaw_depth the Geant4 jaw spans BDSIM's default 2 m wide box, so
-    # the taper runs over ~1 m and only a steep angle leaves a tip at a
-    # realistic length; see test_geant4_tip_taper_jaw_depth for a realistic jaw.
+    # SuperKEKB-type jaw, as in its engineering drawing and in SAD: a 10 mm long
+    # flat face at the beam, a 12 degree taper over the first 37 mm of depth (up
+    # to 358 mm long), then 88 mm more of jaw at that length. The element is
+    # 10 mm long; Geant4 tracks through the full jaw, centred on it. The jaws
+    # are deliberately not centred on the beam, to exercise the re-centring
+    # that gives both jaws the same depth.
     if xc.geant4.engine.is_running():
         xc.geant4.engine.stop()
 
-    length = 0.6
-    jaw_gap = 0.001       # m, half gap
-    tip_thickness = 0.01  # m
-    n_part = 400
-
-    flat = xc.Geant4CollimatorTip(length=length, jaw=[jaw_gap, -jaw_gap],
-                                  material=xc.materials.Iron, tip_material=xc.materials.Tungsten,
-                                  tip_thickness=tip_thickness)
-    tapered = xc.Geant4CollimatorTip(length=length, jaw=[jaw_gap, -jaw_gap],
-                                     material=xc.materials.Iron, tip_material=xc.materials.Tungsten,
-                                     tip_thickness=tip_thickness, taper_angle_deg=80)
-    assert flat.taper_angle == 0
-    assert np.isclose(tapered.taper_angle, np.deg2rad(80))
-
-    xc.geant4.engine.particle_ref = particle_ref
-    xc.geant4.engine.start(elements=[flat, tapered], seed=1993)
-
-    # Particles entering shallow in the jaw, well within tip_thickness
-    x = np.full(n_part, jaw_gap + 0.2*tip_thickness)
-    part_init = xp.build_particles(x=x, y=np.zeros(n_part), px=np.zeros(n_part), py=np.zeros(n_part),
-                                   particle_ref=xc.geant4.engine.particle_ref, _capacity=n_part*4)
-
-    part_flat = part_init.copy()
-    part_tapered = part_init.copy()
-    flat.track(part_flat)
-    tapered.track(part_tapered)
-
-    survived_flat = int((part_flat.state == 1).sum())
-    survived_tapered = int((part_tapered.state == 1).sum())
-    print(f"Shallow hits surviving: flat {survived_flat}/{n_part}, "
-          f"tapered {survived_tapered}/{n_part}")
-    assert survived_flat < 0.05*n_part        # thick flat tip: (almost) full absorption
-    assert survived_tapered > 0.05*n_part     # short tapered tip: a clear fraction gets through
-    assert survived_tapered > survived_flat
-
-    xc.geant4.engine.stop(clean=True)
-
-
-@pytest.mark.geant4
-def test_geant4_tip_taper_jaw_depth():
-    # SuperKEKB-like jaw as modelled in SAD: a 12 degree wedge over the first
-    # 37 mm of the jaw, 358 mm long at that depth and ~10 mm long at the beam.
-    # The jaws are deliberately not centred on the beam, to exercise the
-    # re-centring that gives both jaws the same depth.
-    if xc.geant4.engine.is_running():
-        xc.geant4.engine.stop()
-
-    length = 0.358
+    length = 0.010
     jaw = [0.0080, -0.0076]
-    jaw_depth = 0.037
-    tip_thickness = 0.005
+    jaw_depth = 0.125
+    taper_depth = 0.037
     n_part = 400
-    kwargs = dict(length=length, jaw=jaw, material=xc.materials.Copper,
-                  tip_material=xc.materials.Tungsten, tip_thickness=tip_thickness,
-                  jaw_depth=jaw_depth)
+    px = 1e-3
+    kwargs = dict(length=length, jaw=jaw, jaw_depth=jaw_depth, taper_depth=taper_depth,
+                  material=xc.materials.Copper,
+                  tip_material=xc.materials.Tungsten, tip_thickness=0.005)
 
     flat = xc.Geant4CollimatorTip(**kwargs)
     tapered = xc.Geant4CollimatorTip(**kwargs, taper_angle_deg=12)
-    tip_length = length - 2*jaw_depth/np.tan(tapered.taper_angle)
-    assert np.isclose(tip_length, 0.00987, atol=1e-5)
+    assert flat.taper_extension == 0
+    assert np.isclose(length + 2*tapered.taper_extension, 0.35814, atol=1e-5)
 
     xc.geant4.engine.particle_ref = particle_ref
     xc.geant4.engine.start(elements=[flat, tapered], seed=1993)
 
-    def survivors(coll, depth):
-        part = xp.build_particles(x=np.full(n_part, jaw[0] + depth), y=np.zeros(n_part),
-                                  px=np.zeros(n_part), py=np.zeros(n_part),
+    def track(coll, depth):
+        x0 = jaw[0] + depth
+        part = xp.build_particles(x=np.full(n_part, x0), px=np.full(n_part, px),
+                                  y=np.zeros(n_part), py=np.zeros(n_part),
                                   particle_ref=xc.geant4.engine.particle_ref,
                                   _capacity=n_part*4)
         coll.track(part)
-        return int((part.state == 1).sum())
+        mask = (part.state == 1) & (part.particle_id < n_part)
+        # Surviving primaries come out at the end of the element, not of the
+        # longer wedge: x0 + px*length up to multiple scattering. Being 174 mm
+        # off in either drift would shift this by px*174 mm = 174 um.
+        if mask.sum() > 0:
+            assert np.median(np.abs(part.x[mask] - (x0 + px*length))) < 30e-6
+        return int(mask.sum())
 
-    # 2 mm deep: ~29 mm of tungsten through the wedge, 358 mm through the flat jaw
-    # 30 mm deep: ~292 mm of copper through the wedge
-    flat_shallow = survivors(flat, 0.002)
-    tapered_shallow = survivors(tapered, 0.002)
-    tapered_deep = survivors(tapered, 0.030)
-    print(f"Survivors out of {n_part}: flat 2 mm deep {flat_shallow}, "
-          f"tapered 2 mm deep {tapered_shallow}, tapered 30 mm deep {tapered_deep}")
-    assert flat_shallow < 0.05*n_part
-    assert tapered_deep < 0.05*n_part
-    assert tapered_shallow > 0.25*n_part
+    # 2 mm deep: 10 mm of tungsten through the flat jaw, ~29 mm through the taper
+    # 30 mm deep: 10 mm of copper through the flat jaw, ~292 mm through the taper
+    # 60 mm deep: 10 mm of copper through the flat jaw, the full 358 mm beyond the taper
+    flat_shallow = track(flat, 0.002)
+    flat_deep = track(flat, 0.030)
+    flat_plateau = track(flat, 0.060)
+    tapered_shallow = track(tapered, 0.002)
+    tapered_deep = track(tapered, 0.030)
+    tapered_plateau = track(tapered, 0.060)
+    print(f"Surviving primaries out of {n_part} (2, 30, 60 mm deep): flat {flat_shallow}, "
+          f"{flat_deep}, {flat_plateau}; tapered {tapered_shallow}, {tapered_deep}, "
+          f"{tapered_plateau}")
+    assert flat_deep > 0.8*n_part             # short jaw: deep hits mostly get through
+    assert flat_plateau > 0.8*n_part
+    assert tapered_deep < 0.5*flat_deep       # the taper stops them
+    assert tapered_deep < tapered_shallow     # and stops deep hits more than shallow ones
+    assert tapered_shallow < flat_shallow
+    assert tapered_plateau <= tapered_deep    # beyond the taper the jaw stays at full length
+    assert tapered_plateau < 0.25*n_part
 
     xc.geant4.engine.stop(clean=True)

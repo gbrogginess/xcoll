@@ -307,7 +307,8 @@ geant4_user_fields_read_only = base_coll_user_fields_read_only
 geant4_tip_fields = {**geant4_fields,
     'tip_thickness':         0.05,
     'taper_angle':           0.15,
-    'jaw_depth':             0.037
+    'jaw_depth':             0.125,
+    'taper_depth':           0.037
 }
 geant4_tip_dict_fields =  [*geant4_dict_fields,
     {'field': 'tip_material', 'val': xc.materials.Manganese, 'expected': {'_tip_material': xc.materials.Manganese}}
@@ -459,23 +460,37 @@ def test_geant4_tip_jaw_depth():
         return xc.Geant4CollimatorTip(material=xc.materials.Copper, tip_material=xc.materials.Tungsten,
                                       tip_thickness=0.005, **kwargs)
 
-    # Default: BDSIM keeps its 2 m wide box
-    assert tip(length=0.358).jaw_depth == 0
-    assert width(tip(length=0.358), 0.008, -0.008, 0, 0, 0) == 0
+    # Default: BDSIM keeps its 2 m wide box, and the jaws are as long as the element
+    assert tip(length=0.01).jaw_depth == 0
+    assert width(tip(length=0.01), 0.008, -0.008, 0, 0, 0) == 0
+    assert tip(length=0.01).taper_extension == 0
+    assert tip(length=0.01, jaw_depth=0.037).taper_extension == 0
 
-    # SAD-like jaw: horizontalWidth such that each jaw is jaw_depth deep (one-sided too)
-    elem = tip(length=0.358, jaw_depth=0.037, taper_angle_deg=12)
-    assert np.isclose(width(elem, 0.008, -0.008, 0, 0, 0), 2*(0.008 + 0.037))
-    assert np.isclose(width(elem, 0.008, -0.1, 1, 0, 0), 2*(0.008 + 0.037))
-    assert np.isclose(width(elem, 0.1, -0.006, 2, 0, 0), 2*(0.006 + 0.037))
+    # SuperKEKB-type jaw: 10 mm flat face, 12 degree taper over the first 37 mm (up to
+    # 358 mm), then 88 mm at that length; horizontalWidth such that each jaw is jaw_depth
+    # deep (one-sided too)
+    elem = tip(length=0.01, jaw_depth=0.125, taper_depth=0.037, taper_angle_deg=12)
+    assert np.isclose(elem.length + 2*elem.taper_extension, 0.35814, atol=1e-5)
+    assert np.isclose(width(elem, 0.008, -0.008, 0, 0, 0), 2*(0.008 + 0.125))
+    assert np.isclose(width(elem, 0.008, -0.1, 1, 0, 0), 2*(0.008 + 0.125))
+    assert np.isclose(width(elem, 0.1, -0.006, 2, 0, 0), 2*(0.006 + 0.125))
+
+    # The taper ends at the shallower of taper_depth and jaw_depth
+    ext = 0.037/np.tan(np.deg2rad(12))
+    assert np.isclose(tip(length=0.01, jaw_depth=0.037, taper_angle_deg=12).taper_extension, ext)
+    assert np.isclose(tip(length=0.01, jaw_depth=0.037, taper_depth=0.1,
+                          taper_angle_deg=12).taper_extension, ext)
+    assert np.isclose(tip(length=0.01, taper_depth=0.037, taper_angle_deg=12).taper_extension, ext)
+    assert width(tip(length=0.01, taper_depth=0.037, taper_angle_deg=12), 0.008, -0.008, 0, 0, 0) == 0
 
     # Invalid geometries are caught before reaching BDSIM
     for elem, args in [
-        (tip(length=0.358, taper_angle_deg=12), (0.008, -0.008, 0, 0, 0)),   # taper over the 2 m box
-        (tip(length=0.358, jaw_depth=0.05, taper_angle_deg=12), (0.008, -0.008, 0, 0, 0)),  # no tip left
-        (tip(length=0.358, jaw_depth=0.004), (0.008, -0.008, 0, 0, 0)),      # jaw thinner than its tip
-        (tip(length=0.358, jaw_depth=0.037, taper_angle_deg=12), (0.008, -0.008, 0, 1e-3, 0)),  # with tilt
-        (tip(length=0.358, jaw_depth=0.037), (-0.001, -0.008, 1, 0, 0)),     # jaw across the axis
+        (tip(length=0.01, taper_angle_deg=12), (0.008, -0.008, 0, 0, 0)),    # taper over the 2 m box
+        (tip(length=0.01, jaw_depth=0.125, taper_depth=-0.01, taper_angle_deg=12),
+         (0.008, -0.008, 0, 0, 0)),                                          # negative taper_depth
+        (tip(length=0.01, jaw_depth=0.004), (0.008, -0.008, 0, 0, 0)),       # jaw thinner than its tip
+        (tip(length=0.01, jaw_depth=0.037, taper_angle_deg=12), (0.008, -0.008, 0, 1e-3, 0)),  # with tilt
+        (tip(length=0.01, jaw_depth=0.037), (-0.001, -0.008, 1, 0, 0)),      # jaw across the axis
     ]:
         with pytest.raises(ValueError):
             width(elem, *args)
