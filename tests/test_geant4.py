@@ -218,3 +218,38 @@ def test_geant4_tip_taper():
     assert tapered_plateau < 0.25*n_part
 
     xc.geant4.engine.stop(clean=True)
+
+
+@pytest.mark.geant4
+def test_geant4_tip_jaw_width():
+    # The jaws are jaw_width wide across their plane of motion (BDSIM's default is
+    # 12 mm). Hits further off-centre than half of that miss the jaw in Geant4.
+    # A 20 mm wide jaw is used, so that hits at 8 mm only stop if it is passed on.
+    if xc.geant4.engine.is_running():
+        xc.geant4.engine.stop()
+
+    jaw = [0.008, -0.008]
+    n_part = 200
+    coll = xc.Geant4CollimatorTip(length=0.010, jaw=jaw, jaw_depth=0.125, taper_depth=0.037,
+                                  taper_angle_deg=12, jaw_width=0.020, material=xc.materials.Copper,
+                                  tip_material=xc.materials.Tungsten, tip_thickness=0.005)
+
+    xc.geant4.engine.particle_ref = particle_ref
+    xc.geant4.engine.start(elements=coll, seed=1993)
+
+    def survivors(y):
+        # 60 mm deep in the jaw: 358 mm of copper, if inside it
+        part = xp.build_particles(x=np.full(n_part, jaw[0] + 0.060), y=np.full(n_part, y),
+                                  px=np.zeros(n_part), py=np.zeros(n_part),
+                                  particle_ref=xc.geant4.engine.particle_ref,
+                                  _capacity=n_part*4)
+        coll.track(part)
+        return int(((part.state == 1) & (part.particle_id < n_part)).sum())
+
+    inside = survivors(0.008)
+    outside = survivors(0.012)
+    print(f"Surviving primaries out of {n_part}: {inside} at y=8 mm, {outside} at y=12 mm")
+    assert inside < 0.25*n_part
+    assert outside == n_part
+
+    xc.geant4.engine.stop(clean=True)

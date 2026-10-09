@@ -308,7 +308,8 @@ geant4_tip_fields = {**geant4_fields,
     'tip_thickness':         0.05,
     'taper_angle':           0.15,
     'jaw_depth':             0.125,
-    'taper_depth':           0.037
+    'taper_depth':           0.037,
+    'jaw_width':             0.012
 }
 geant4_tip_dict_fields =  [*geant4_dict_fields,
     {'field': 'tip_material', 'val': xc.materials.Manganese, 'expected': {'_tip_material': xc.materials.Manganese}}
@@ -488,6 +489,7 @@ def test_geant4_tip_jaw_depth():
         (tip(length=0.01, taper_angle_deg=12), (0.008, -0.008, 0, 0, 0)),    # taper over the 2 m box
         (tip(length=0.01, jaw_depth=0.125, taper_depth=-0.01, taper_angle_deg=12),
          (0.008, -0.008, 0, 0, 0)),                                          # negative taper_depth
+        (tip(length=0.01, jaw_depth=0.125, jaw_width=-0.012), (0.008, -0.008, 0, 0, 0)),  # negative width
         (tip(length=0.01, jaw_depth=0.004), (0.008, -0.008, 0, 0, 0)),       # jaw thinner than its tip
         (tip(length=0.01, jaw_depth=0.037, taper_angle_deg=12), (0.008, -0.008, 0, 1e-3, 0)),  # with tilt
         (tip(length=0.01, jaw_depth=0.037), (-0.001, -0.008, 1, 0, 0)),      # jaw across the axis
