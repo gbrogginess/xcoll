@@ -125,8 +125,10 @@ class Geant4CollimatorTip(Geant4Collimator):
         'taper_angle': xo.Float64,  # rad; 0 (default) means a flat (untapered) jaw, as before. With a
                                     # taper, length is that of the flat jaw face at the beam, and the
                                     # jaws are longer than the element (see taper_extension)
-        'jaw_depth': xo.Float64     # m, transverse depth of each jaw from its edge (the taper
-                                    # spans this); 0 (default) means a 2 m wide Geant4 box, as before
+        'jaw_depth': xo.Float64,    # m, transverse depth of each jaw from its edge; 0 (default)
+                                    # means a 2 m wide Geant4 box, as before
+        'taper_depth': xo.Float64   # m, depth from the jaw edge where the taper ends, the jaw keeping
+                                    # a constant length beyond it; 0 (default) tapers the whole jaw
     }
 
     isthick = True
@@ -186,13 +188,18 @@ class Geant4CollimatorTip(Geant4Collimator):
         """How far a tapered jaw extends beyond each end of the element [m].
 
         The element length is that of the flat jaw face at the beam; from there
-        each jaw grows with depth, up to length + 2*jaw_depth/tan(taper_angle)
-        at its outer edge. Geant4 tracks through that full length, centred on
-        the element, so the lattice should leave this much room on either side.
+        each jaw grows with depth, up to length + 2*depth/tan(taper_angle) where
+        the taper ends (taper_depth, or jaw_depth if not set or smaller), and
+        keeps that length beyond. Geant4 tracks through that full length,
+        centred on the element, so the lattice should leave this much room on
+        either side.
         """
-        if self.taper_angle > 0 and self.jaw_depth > 0:
-            return self.jaw_depth / np.tan(self.taper_angle)
-        return 0.
+        if self.taper_angle <= 0:
+            return 0.
+        depth = self.jaw_depth
+        if self.taper_depth > 0 and (depth <= 0 or self.taper_depth < depth):
+            depth = self.taper_depth
+        return depth / np.tan(self.taper_angle)
 
 
 @track_construction
