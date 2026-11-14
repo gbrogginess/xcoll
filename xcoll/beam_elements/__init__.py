@@ -12,6 +12,7 @@ from .geant4 import Geant4Collimator, Geant4CollimatorTip, Geant4Crystal
 from .blowup import BlowUp
 from .monitor import EmittanceMonitor
 from .beamgas import BeamGasMarker
+from .thermal_photons import ThermalPhotonMarker
 
 block_classes = tuple(v for v in globals().values()
                       if isinstance(v, type) and issubclass(v, BaseBlock) and v != BaseBlock
@@ -24,4 +25,4 @@ crystal_classes = tuple(v for v in globals().values()
                         if isinstance(v, type) and issubclass(v, BaseCrystal) and v != BaseCrystal)
 
 element_classes = block_classes + (BlowUp, EmittanceMonitor,
-                                  BeamGasMarker)
+                                  BeamGasMarker, ThermalPhotonMarker)
