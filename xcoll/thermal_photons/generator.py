@@ -165,6 +165,38 @@ def _check_profile(table, column, name, *, positive):
     return s, values
 
 
+def _one_sided(s, s_table, values, side):
+    """
+    One-sided limit of a piecewise-linear profile.
+
+    A step of the profile is described by two entries at the same ``s``:
+    the limit from the left uses the first of them, the limit from the right
+    the second. The profile is constant beyond the ends of the table.
+
+    Parameters
+    ----------
+    s : float
+        Position [m].
+    s_table, values : ndarray
+        Tabulated positions [m] and values of the profile.
+    side : {'left', 'right'}
+        Side from which ``s`` is approached.
+
+    Returns
+    -------
+    value : float
+        Limit of the profile at ``s``.
+    """
+    ii = int(np.searchsorted(s_table, s, side=side))
+    if ii == 0:
+        return float(values[0])
+    if ii == len(s_table):
+        return float(values[-1])
+    s0, s1 = s_table[ii - 1], s_table[ii]
+    return float(values[ii - 1]
+                 + (values[ii] - values[ii - 1]) * (s - s0) / (s1 - s0))
+
+
 def _section_nodes(s_table, values, s_start, s_end):
     """
     Break points of a piecewise-linear profile inside a section.
@@ -172,7 +204,8 @@ def _section_nodes(s_table, values, s_start, s_end):
     Parameters
     ----------
     s_table, values : ndarray
-        Tabulated positions [m] and values of the profile.
+        Tabulated positions [m] and values of the profile. Two entries at
+        the same position describe a step.
     s_start, s_end : float
         Limits of the section [m].
 
@@ -180,11 +213,17 @@ def _section_nodes(s_table, values, s_start, s_end):
     -------
     s_nodes, value_nodes : ndarray
         The two section edges and the tabulated positions between them, with
-        the linearly interpolated values of the profile.
+        the values of the profile there. At the edges these are the limits
+        from inside the section, so that a step sitting on an edge belongs
+        to the right side.
     """
-    s_inner = s_table[(s_table > s_start) & (s_table < s_end)]
-    s_nodes = np.concatenate(([s_start], s_inner, [s_end]))
-    return s_nodes, np.interp(s_nodes, s_table, values)
+    inner = (s_table > s_start) & (s_table < s_end)
+    s_nodes = np.concatenate(([s_start], s_table[inner], [s_end]))
+    value_nodes = np.concatenate((
+        [_one_sided(s_start, s_table, values, 'right')],
+        values[inner],
+        [_one_sided(s_end, s_table, values, 'left')]))
+    return s_nodes, value_nodes
 
 
 def _integrated_rates(s_nodes, temperature_nodes, *, p0c, mass0, q0,
@@ -608,8 +647,9 @@ class ThermalPhotonGenerator:
             Temperature of the vacuum chamber [K]: a number for a uniform
             temperature, or a table with the columns ``s`` [m] and
             ``temperature`` [K] for a profile, interpolated linearly in
-            ``s`` (constant beyond its ends). The photon density goes like
-            the third power of the temperature.
+            ``s`` (constant beyond its ends). Two entries at the same ``s``
+            describe a step, e.g. at the ends of a cryogenic section. The
+            photon density goes like the third power of the temperature.
         energy_loss_cut : float, optional
             Lowest relative energy loss generated, in ``(0, 1)``, the same
             for all the markers. Mutually exclusive with
