@@ -13,6 +13,7 @@ from scipy import constants as sc
 import xobjects as xo
 import xtrack as xt
 import xcoll as xc
+from xobjects.test_helpers import for_all_test_contexts
 from xcoll.thermal_photons.cross_sections import (ThermalComptonCalculator,
                                                   photon_density)
 
@@ -396,6 +397,23 @@ def test_generation_does_not_depend_on_the_other_markers(ring):
         _assert_same_particles(tp.generate(at=nn), single_job[nn])
     for nn, part in tp.generate(at=names[::-2]).items():
         _assert_same_particles(part, single_job[nn])
+
+
+@for_all_test_contexts(excluding=('ContextCupy', 'ContextPyopencl'))
+def test_generation_does_not_depend_on_the_context(test_context, ring):
+    # Each particle has its own random-number generator: the same particles
+    # are generated whatever the number of threads
+    line = _ring_with_markers()
+    _configure(line, twiss=ring[1])
+    reference = line.xcoll.thermal_photons.generate()
+
+    other = _ring_with_markers()
+    other.build_tracker(_context=test_context)
+    _configure(other, twiss=ring[1])
+    generated = other.xcoll.thermal_photons.generate()
+    assert list(generated) == list(reference)
+    for nn in reference:
+        _assert_same_particles(generated[nn], reference[nn])
 
 
 def test_replicas(ring):
