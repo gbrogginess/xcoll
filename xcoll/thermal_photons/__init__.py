@@ -8,3 +8,5 @@ from .cross_sections import (ThermalComptonCalculator, ComptonSample,
                              planck_spectrum, thomson_xsec,
                              klein_nishina_ratio, klein_nishina_weight,
                              klein_nishina_partial_ratio)
+from .analysis import ThermalPhotonResult
+from .generator import ThermalPhotonGenerator

@@ -19,6 +19,7 @@ from .rf_sweep import RFSweep, prepare_rf_sweep
 from .lossmap import LossMap, MultiLossMap
 from .particles_tree import ParticlesTree
 from .beamgas import BeamGasGenerator, BeamGasResult
+from .thermal_photons import ThermalPhotonGenerator, ThermalPhotonResult
 from .line_tools import XcollLineAPI
 from .environment_tools import XcollEnvironmentAPI
 

@@ -74,6 +74,23 @@ class XcollLineAPI:
 
         return BeamGasGenerator(self.line)
 
+    @property
+    def thermal_photons(self):
+        """
+        Simulation of the scattering of the beam on the thermal photons of
+        the vacuum chamber of the line.
+
+        Returns
+        -------
+        thermal_photons : xcoll.ThermalPhotonGenerator
+            Generator bound to the line, to install and configure the
+            thermal-photon markers, generate the scattered particles and
+            analyse them.
+        """
+        from .thermal_photons.generator import ThermalPhotonGenerator
+
+        return ThermalPhotonGenerator(self.line)
+
 
 class XcollLineAccessor:
     _typename = 'element'
