@@ -16,6 +16,7 @@ DEFAULT_XCOLL_ELEMENTS = [
     xc.EverestCrystal,
     xc.BlowUp,
     xc.BeamGasMarker,
+    xc.ThermalPhotonMarker,
     # xc.ParticleStatsMonitor,
     xc.EmittanceMonitor,
 ]
