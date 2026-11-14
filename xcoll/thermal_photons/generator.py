@@ -1132,6 +1132,13 @@ class ThermalPhotonGenerator:
                 cut = float(markers[nn].energy_loss_cut)
                 for rr, (pp, log) in enumerate(zip(samples[nn],
                                                    sample_logs[nn])):
+                    # Samples of sections with equal rates have equal
+                    # weights: the name tells the records apart
+                    if np.any(np.asarray(log['name'], dtype=object) != nn):
+                        raise ValueError(
+                            f"The record of the interactions given for "
+                            f"marker '{nn}' does not match it: it was "
+                            f"generated at another marker.")
                     xx, ww, ll = _event_losses(pp, log, 'energy_loss')
                     cut_scale.append(xx / cut)
                     weight.append(ww)
